@@ -200,6 +200,16 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_sensit_indir, "0.06") \
 	CVAR_DEF_T (rt_sensit_spec, "0.03") \
 	\
+	CVAR_DEF_T (rt_gi_history, "8") \
+	CVAR_DEF_T (rt_gi_reuse, "4") \
+	CVAR_DEF_T (rt_gi_radius, "8") \
+	CVAR_DEF_T (rt_gi_firefly, "16") \
+	CVAR_DEF_T (rt_reuse_jitter, "0") \
+	CVAR_DEF_T (rt_dn_dense, "1") \
+	CVAR_DEF_T (rt_dn_deflicker, "2") \
+	CVAR_DEF_T (rt_bluenoise, "1") \
+	CVAR_DEF_T (rt_antilag_sq, "1") \
+	\
 	CVAR_DEF_T (rt_globallightmult, "10") \
 	CVAR_DEF_T (rt_globallight_r, "255") \
 	CVAR_DEF_T (rt_globallight_g, "214") \
@@ -1125,6 +1135,18 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 		.lightUniqueIdIgnoreFirstPersonViewerShadows = NULL,
 	};
 
+	RgDrawFrameDenoisingParams denoising_params = {
+		.indirectHistory = CVAR_TO_UINT32 (rt_gi_history),
+		.indirectSpatialReuse = CVAR_TO_UINT32 (rt_gi_reuse),
+		.indirectSpatialRadius = CVAR_TO_FLOAT (rt_gi_radius),
+		.indirectFireflyClamp = CVAR_TO_FLOAT (rt_gi_firefly),
+		.temporalReuseJitter = CVAR_TO_FLOAT (rt_reuse_jitter),
+		.indirectDenseFilter = CVAR_TO_BOOL (rt_dn_dense),
+		.indirectDeflicker = CVAR_TO_FLOAT (rt_dn_deflicker),
+		.blueNoise = CVAR_TO_BOOL (rt_bluenoise),
+		.antilagSquared = CVAR_TO_BOOL (rt_antilag_sq),
+	};
+
 	RgDrawFrameBloomParams bloom_params = {
 		.bloomIntensity = CVAR_TO_BOOL (rt_classic_render) ? 0 : CVAR_TO_FLOAT (rt_bloom_intensity),
 		.inputThreshold = 0.0f,
@@ -1326,6 +1348,7 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 				.pRadialBlur = cl.intermission ? NULL : &radial_effect,
 			},
 		.pDebugParams = &debug_params,
+		.pDenoisingParams = &denoising_params,
 	};
 	memcpy (info.view, vulkan_globals.view_matrix, 16 * sizeof(float));
 
@@ -1882,6 +1905,7 @@ enum
 	VID_OPT_FILTER,
 	VID_OPT_PARTICLES,
 	VID_OPT_VOLUMETRICS,
+	VID_OPT_RT_TUNING,
 
 	VID_OPT_BACK,
 
@@ -2142,11 +2166,295 @@ static void VID_Menu_ChooseNextAA (int vidopt, int dir)
 
 /*
 ================
+Lighting & noise tuning page (part of the video menu)
+================
+*/
+static qboolean rtq_open = false;
+static int      rtq_cursor = 0;
+
+enum
+{
+	RTQ_PRESET,
+	RTQ_GI_HISTORY,
+	RTQ_GI_REUSE,
+	RTQ_GI_RADIUS,
+	RTQ_GI_FIREFLY,
+	RTQ_JITTER,
+	RTQ_DENSE,
+	RTQ_DEFLICKER,
+	RTQ_BLUENOISE,
+	RTQ_ANTILAG_SQ,
+	RTQ_SENSIT_DIR,
+	RTQ_SENSIT_INDIR,
+	RTQ_SENSIT_SPEC,
+	RTQ_BACK,
+	RTQ_ITEMS
+};
+
+typedef struct
+{
+	const char *name;
+	float       gi_history, gi_reuse, gi_radius, gi_firefly, jitter, dense, deflicker, bluenoise, antilag_sq;
+} rtq_preset_t;
+
+static const rtq_preset_t rtq_presets[] = {
+	// no reuse of neighbours' light samples: closest to Quake II RTX, a bit more fine noise
+	{"Stable", 8, 0, 8, 16, 0, 1, 2, 1, 1},
+	{"Balanced", 8, 4, 8, 16, 0, 1, 2, 1, 1},
+	// neighbours' samples are checked for visibility: no light leaks, costs 4 rays per pixel
+	{"Accurate", 8, 8, 8, 16, 0, 1, 2, 1, 1},
+	// as before these settings existed
+	{"Original", 20, 4, 8, 0, 2, 0, 0, 0, 0},
+};
+#define RTQ_PRESET_COUNT ((int)countof (rtq_presets))
+
+static int RTQ_CurrentPreset (void)
+{
+	for (int i = 0; i < RTQ_PRESET_COUNT; i++)
+	{
+		const rtq_preset_t *p = &rtq_presets[i];
+		if (rt_gi_history.value == p->gi_history && rt_gi_reuse.value == p->gi_reuse && rt_gi_radius.value == p->gi_radius &&
+		    rt_gi_firefly.value == p->gi_firefly && rt_reuse_jitter.value == p->jitter && rt_dn_dense.value == p->dense &&
+		    rt_dn_deflicker.value == p->deflicker && rt_bluenoise.value == p->bluenoise && rt_antilag_sq.value == p->antilag_sq)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+static const char *RTQ_PresetName (void)
+{
+	const int i = RTQ_CurrentPreset ();
+	return i >= 0 ? rtq_presets[i].name : "Custom";
+}
+
+static void RTQ_ApplyPreset (int i)
+{
+	const rtq_preset_t *p = &rtq_presets[i];
+	Cvar_SetValueQuick (&rt_gi_history, p->gi_history);
+	Cvar_SetValueQuick (&rt_gi_reuse, p->gi_reuse);
+	Cvar_SetValueQuick (&rt_gi_radius, p->gi_radius);
+	Cvar_SetValueQuick (&rt_gi_firefly, p->gi_firefly);
+	Cvar_SetValueQuick (&rt_reuse_jitter, p->jitter);
+	Cvar_SetValueQuick (&rt_dn_dense, p->dense);
+	Cvar_SetValueQuick (&rt_dn_deflicker, p->deflicker);
+	Cvar_SetValueQuick (&rt_bluenoise, p->bluenoise);
+	Cvar_SetValueQuick (&rt_antilag_sq, p->antilag_sq);
+}
+
+// step a cvar through a list of values (from the nearest one)
+static void RTQ_Step (cvar_t *var, const float *values, int count, int dir)
+{
+	int nearest = 0;
+	for (int i = 1; i < count; i++)
+	{
+		if (fabsf (values[i] - var->value) < fabsf (values[nearest] - var->value))
+			nearest = i;
+	}
+	nearest = CLAMP (0, nearest + dir, count - 1);
+	Cvar_SetValueQuick (var, values[nearest]);
+}
+
+static void RTQ_Change (int dir)
+{
+	static const float history[] = {0, 1, 2, 4, 6, 8, 12, 16, 20, 32};
+	static const float reuse[] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+	static const float radius[] = {2, 4, 6, 8, 12, 16, 24, 32};
+	static const float firefly[] = {0, 4, 8, 16, 32, 64};
+	static const float jitter[] = {0, 0.5f, 1, 2};
+	static const float onoff[] = {0, 1};
+	static const float deflicker[] = {0, 1.5f, 2, 3, 4, 8};
+	static const float sensit_dir[] = {0, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.8f, 1};
+	static const float sensit_indir[] = {0, 0.02f, 0.04f, 0.06f, 0.1f, 0.15f, 0.2f, 0.3f, 0.5f};
+	static const float sensit_spec[] = {0, 0.01f, 0.02f, 0.03f, 0.05f, 0.1f, 0.2f, 0.3f, 0.5f};
+
+	switch (rtq_cursor)
+	{
+	case RTQ_PRESET:
+	{
+		int i = RTQ_CurrentPreset ();
+		i = i < 0 ? (dir > 0 ? 0 : RTQ_PRESET_COUNT - 1) : (i + dir + RTQ_PRESET_COUNT) % RTQ_PRESET_COUNT;
+		RTQ_ApplyPreset (i);
+		break;
+	}
+	case RTQ_GI_HISTORY:   RTQ_Step (&rt_gi_history, history, countof (history), dir); break;
+	case RTQ_GI_REUSE:     RTQ_Step (&rt_gi_reuse, reuse, countof (reuse), dir); break;
+	case RTQ_GI_RADIUS:    RTQ_Step (&rt_gi_radius, radius, countof (radius), dir); break;
+	case RTQ_GI_FIREFLY:   RTQ_Step (&rt_gi_firefly, firefly, countof (firefly), dir); break;
+	case RTQ_JITTER:       RTQ_Step (&rt_reuse_jitter, jitter, countof (jitter), dir); break;
+	case RTQ_DENSE:        RTQ_Step (&rt_dn_dense, onoff, countof (onoff), rt_dn_dense.value ? -1 : 1); break;
+	case RTQ_DEFLICKER:    RTQ_Step (&rt_dn_deflicker, deflicker, countof (deflicker), dir); break;
+	case RTQ_BLUENOISE:    RTQ_Step (&rt_bluenoise, onoff, countof (onoff), rt_bluenoise.value ? -1 : 1); break;
+	case RTQ_ANTILAG_SQ:   RTQ_Step (&rt_antilag_sq, onoff, countof (onoff), rt_antilag_sq.value ? -1 : 1); break;
+	case RTQ_SENSIT_DIR:   RTQ_Step (&rt_sensit_dir, sensit_dir, countof (sensit_dir), dir); break;
+	case RTQ_SENSIT_INDIR: RTQ_Step (&rt_sensit_indir, sensit_indir, countof (sensit_indir), dir); break;
+	case RTQ_SENSIT_SPEC:  RTQ_Step (&rt_sensit_spec, sensit_spec, countof (sensit_spec), dir); break;
+	default: break;
+	}
+}
+
+static void RTQ_MenuKey (int key)
+{
+	switch (key)
+	{
+	case K_ESCAPE:
+	case K_BACKSPACE:
+		S_LocalSound ("misc/menu1.wav");
+		rtq_open = false;
+		break;
+	case K_UPARROW:
+		S_LocalSound ("misc/menu1.wav");
+		rtq_cursor = (rtq_cursor + RTQ_ITEMS - 1) % RTQ_ITEMS;
+		break;
+	case K_DOWNARROW:
+		S_LocalSound ("misc/menu1.wav");
+		rtq_cursor = (rtq_cursor + 1) % RTQ_ITEMS;
+		break;
+	case K_LEFTARROW:
+		S_LocalSound ("misc/menu3.wav");
+		RTQ_Change (-1);
+		break;
+	case K_RIGHTARROW:
+		S_LocalSound ("misc/menu3.wav");
+		RTQ_Change (1);
+		break;
+	case K_ENTER:
+	case K_KP_ENTER:
+		m_entersound = true;
+		if (rtq_cursor == RTQ_BACK)
+			rtq_open = false;
+		else
+			RTQ_Change (1);
+		break;
+	default:
+		break;
+	}
+}
+
+static void RTQ_MenuDraw (cb_context_t *cbx)
+{
+	int     y = 4;
+	qpic_t *p = Draw_CachePic ("gfx/qplaque.lmp");
+	M_DrawTransPic (cbx, 16, y, p);
+	p = Draw_CachePic ("gfx/p_option.lmp");
+	M_DrawPic (cbx, (320 - p->width) / 2, y, p);
+	y += 28;
+
+	const char *title = "Lighting & Noise";
+	M_PrintWhite (cbx, (320 - 8 * strlen (title)) / 2, y, title);
+	y += 16;
+
+	for (int i = 0; i < RTQ_ITEMS; i++)
+	{
+		const char *label = "";
+		const char *value = "";
+		switch (i)
+		{
+		case RTQ_PRESET:
+			label = "            Preset";
+			value = RTQ_PresetName ();
+			break;
+		case RTQ_GI_HISTORY:
+			M_PrintWhite (cbx, 16, y, "Bounced light samples");
+			y += 8;
+			label = "     Reuse history";
+			value = rt_gi_history.value <= 0 ? "off" : va ("%d frames", (int)rt_gi_history.value);
+			break;
+		case RTQ_GI_REUSE:
+			label = "   Share neighbors";
+			value = rt_gi_reuse.value <= 0   ? "off"
+			        : rt_gi_reuse.value <= 4 ? va ("%d", (int)rt_gi_reuse.value)
+			                                 : va ("%d, no leaks", (int)rt_gi_reuse.value - 4);
+			break;
+		case RTQ_GI_RADIUS:
+			label = "      Share radius";
+			value = va ("%d px", (int)rt_gi_radius.value);
+			break;
+		case RTQ_GI_FIREFLY:
+			label = "    Firefly filter";
+			value = rt_gi_firefly.value <= 0 ? "off" : va ("%gx average", rt_gi_firefly.value);
+			break;
+		case RTQ_JITTER:
+			label = "     Reuse jitter";
+			value = rt_reuse_jitter.value <= 0 ? "off" : va ("%g px", rt_reuse_jitter.value);
+			break;
+		case RTQ_DENSE:
+			M_PrintWhite (cbx, 16, y, "Denoiser");
+			y += 8;
+			label = "   Bounced light";
+			value = rt_dn_dense.value ? "dense" : "sparse";
+			break;
+		case RTQ_DEFLICKER:
+			label = "         Deflicker";
+			value = rt_dn_deflicker.value <= 0 ? "off" : va ("%gx average", rt_dn_deflicker.value);
+			break;
+		case RTQ_BLUENOISE:
+			label = "     Noise pattern";
+			value = rt_bluenoise.value ? "blue noise" : "white noise";
+			break;
+		case RTQ_ANTILAG_SQ:
+			label = "    Anti-lag curve";
+			value = rt_antilag_sq.value ? "squared" : "linear";
+			break;
+		case RTQ_SENSIT_DIR:
+			label = "  Direct reaction";
+			value = va ("%g", rt_sensit_dir.value);
+			break;
+		case RTQ_SENSIT_INDIR:
+			label = " Bounced reaction";
+			value = va ("%g", rt_sensit_indir.value);
+			break;
+		case RTQ_SENSIT_SPEC:
+			label = " Reflect reaction";
+			value = va ("%g", rt_sensit_spec.value);
+			break;
+		case RTQ_BACK:
+			label = "              Back";
+			break;
+		}
+
+		M_Print (cbx, 16, y, label);
+		M_Print (cbx, 184, y, value);
+		if (rtq_cursor == i)
+			M_DrawCharacter (cbx, 168, y, 12 + ((int)(realtime * 4) & 1));
+		y += 8;
+	}
+
+	// what the selected setting does
+	static const char *hints[RTQ_ITEMS][2] = {
+		{"Stable: least blotchy, finer noise", "Original: as before these settings"},
+		{"Longer: smoother, but blotches", "linger longer"},
+		{"Off: steadier, a bit more grain.", "'no leaks' traces a ray each"},
+		{"How far neighbors' samples", "are taken from"},
+		{"Dims lone very bright samples", "before they spread"},
+		{"Off keeps samples from drifting", "between pixels (crawling blotches)"},
+		{"Dense: smoother bounced light", ""},
+		{"Dims flickering bright spots", "lower = stronger"},
+		{"Blue noise: finer, even grain", ""},
+		{"Squared: noise doesn't reset", "the history, changes still do"},
+		{"Higher: direct light reacts faster,", "but noisier"},
+		{"Higher: bounced light reacts faster,", "but noisier"},
+		{"Higher: reflections react faster,", "but noisier"},
+		{"", ""},
+	};
+	y += 8;
+	M_PrintWhite (cbx, 16, y, hints[rtq_cursor][0]);
+	M_PrintWhite (cbx, 16, y + 8, hints[rtq_cursor][1]);
+}
+
+/*
+================
 VID_MenuKey
 ================
 */
 static void VID_MenuKey (int key)
 {
+	if (rtq_open)
+	{
+		RTQ_MenuKey (key);
+		return;
+	}
 	{
 		qboolean leave = false;
 
@@ -2320,6 +2628,10 @@ static void VID_MenuKey (int key)
 		case VID_OPT_VSYNC:
 			Cbuf_AddText ("toggle vid_vsync\n");
 			break;
+		case VID_OPT_RT_TUNING:
+			rtq_open = true;
+			rtq_cursor = 0;
+			break;
 		}
 		break;
 
@@ -2338,6 +2650,12 @@ static void VID_MenuDraw (cb_context_t *cbx)
 	int         i, y;
 	qpic_t     *p;
 	const char *title;
+
+	if (rtq_open)
+	{
+		RTQ_MenuDraw (cbx);
+		return;
+	}
 
 	y = 4;
 
@@ -2450,6 +2768,10 @@ static void VID_MenuDraw (cb_context_t *cbx)
 		case VID_OPT_VOLUMETRICS:
 			M_Print (cbx, 16, y, "       Volumetrics");
 			M_Print (cbx, 184, y, CVAR_TO_UINT32 (rt_volume_type) == 2 ? "sky" : "simple");
+			break;
+		case VID_OPT_RT_TUNING:
+			M_Print (cbx, 16, y, " Lighting & noise");
+			M_Print (cbx, 184, y, RTQ_PresetName ());
 			break;
 
 
