@@ -887,8 +887,8 @@ void IN_SendKeyEvents (void)
 			}
 			else if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
 			{
-				vid.width = event.window.data1;
-				vid.height = event.window.data2;
+				// in pixels (data1/data2 are in points, smaller on high-DPI displays)
+				VID_UpdatePixelSize ();
 				vid.restart_next_frame = true;
 				Cvar_FindVar ("scr_conscale")->callback (NULL);
 			}

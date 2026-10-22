@@ -83,6 +83,7 @@ void VID_Update (vrect_t *rects);
 // flushes the given rectangles from the view buffer to the screen
 
 void VID_SyncCvars (void);
+void VID_UpdatePixelSize (void); // vid.width/height from the window size in pixels
 
 void VID_Toggle (void);
 

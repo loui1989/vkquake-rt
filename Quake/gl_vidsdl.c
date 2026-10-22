@@ -97,6 +97,12 @@ static cvar_t                   vid_vsync = {"vid_vsync", "0", CVAR_ARCHIVE};
 static cvar_t                   vid_desktopfullscreen = {"vid_desktopfullscreen", QRT_FULLSCREEN_DEFAULT, CVAR_ARCHIVE}; // QuakeSpasm
 static cvar_t                   vid_borderless = {"vid_borderless", "0", CVAR_ARCHIVE};               // QuakeSpasm
 static cvar_t                   vid_palettize = {"vid_palettize", "0", CVAR_ARCHIVE};
+#ifdef __APPLE__
+// macOS: render at the display's full (Retina) pixel resolution instead of its "looks like" size.
+// Applied when the window is created, i.e. on the next launch.
+static cvar_t                   vid_retina = {"vid_retina", "1", CVAR_ARCHIVE};
+static int                      vid_retina_active = 0;
+#endif
 cvar_t                          vid_filter = {"vid_filter", "1", CVAR_ARCHIVE};
 cvar_t                          vid_gamma = {"gamma", "1", CVAR_ARCHIVE};       // johnfitz -- moved here from view.c
 cvar_t                          vid_contrast = {"contrast", "1", CVAR_ARCHIVE}; // QuakeSpasm, MarkV
@@ -273,6 +279,36 @@ static int VID_GetCurrentHeight (void)
 }
 
 /*
+=======================
+VID_GetPixelWidth / VID_GetPixelHeight: size of the rendered image in pixels
+(differs from the window size in points on high-DPI displays)
+=======================
+*/
+static int VID_GetPixelWidth (void)
+{
+	int w = 0, h = 0;
+#if SDL_VERSION_ATLEAST(2, 26, 0)
+	SDL_GetWindowSizeInPixels (draw_context, &w, &h);
+#endif
+	return w > 0 ? w : VID_GetCurrentWidth ();
+}
+
+static int VID_GetPixelHeight (void)
+{
+	int w = 0, h = 0;
+#if SDL_VERSION_ATLEAST(2, 26, 0)
+	SDL_GetWindowSizeInPixels (draw_context, &w, &h);
+#endif
+	return h > 0 ? h : VID_GetCurrentHeight ();
+}
+
+void VID_UpdatePixelSize (void)
+{
+	vid.width = VID_GetPixelWidth ();
+	vid.height = VID_GetPixelHeight ();
+}
+
+/*
 ====================
 VID_GetCurrentRefreshRate
 ====================
@@ -438,6 +474,11 @@ static qboolean VID_SetMode (int width, int height, int refreshrate, qboolean fu
 #ifdef __APPLE__
 		/* RTGL1 talks to MoltenVK directly; SDL only needs a Metal-capable window */
 		flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_METAL;
+		if (vid_retina.value)
+		{
+			flags |= SDL_WINDOW_ALLOW_HIGHDPI;
+			vid_retina_active = 1;
+		}
 #else
 		flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN;
 #endif
@@ -490,8 +531,8 @@ static qboolean VID_SetMode (int width, int height, int refreshrate, qboolean fu
 	SDL_ShowWindow (draw_context);
 	SDL_RaiseWindow (draw_context);
 
-	vid.width = VID_GetCurrentWidth ();
-	vid.height = VID_GetCurrentHeight ();
+	vid.width = VID_GetPixelWidth ();
+	vid.height = VID_GetPixelHeight ();
 	vid.conwidth = vid.width & 0xFFFFFFF8;
 	vid.conheight = vid.conwidth * vid.height / vid.width;
 
@@ -1460,7 +1501,11 @@ void VID_Init (void)
 	int         display_width, display_height, display_refreshrate;
 	qboolean    fullscreen;
 	const char *read_vars[] = {"vid_fullscreen",        "vid_width",    "vid_height", "vid_refreshrate", "vid_vsync",
-	                           "vid_desktopfullscreen", "vid_borderless"};
+	                           "vid_desktopfullscreen", "vid_borderless"
+#ifdef __APPLE__
+	                           , "vid_retina"
+#endif
+	};
 #define num_readvars (sizeof (read_vars) / sizeof (read_vars[0]))
 
 	Cvar_RegisterVariable (&vid_fullscreen);  // johnfitz
@@ -1472,6 +1517,9 @@ void VID_Init (void)
 	Cvar_RegisterVariable (&vid_desktopfullscreen); // QuakeSpasm
 	Cvar_RegisterVariable (&vid_borderless);        // QuakeSpasm
 	Cvar_RegisterVariable (&vid_palettize);
+#ifdef __APPLE__
+	Cvar_RegisterVariable (&vid_retina);
+#endif
 
 	Cvar_SetCallback (&vid_fullscreen, VID_Changed_f);
 	Cvar_SetCallback (&vid_width, VID_Changed_f);
@@ -1814,6 +1862,9 @@ enum
 	VID_OPT_MODE,
 	// VID_OPT_REFRESHRATE,
 	VID_OPT_APPLY,
+#ifdef __APPLE__
+	VID_OPT_RETINA,
+#endif
 
 
 	VID_OPT_RENDERER,
@@ -2180,6 +2231,9 @@ static void VID_MenuKey (int key)
 			Cvar_SetValueQuick (&rt_volume_type, newval);
 			break;
 #ifdef __APPLE__
+		case VID_OPT_RETINA:
+			Cvar_SetValueQuick (&vid_retina, vid_retina.value ? 0 : 1);
+			break;
 		case VID_OPT_FRAMEGEN:
 			Cvar_SetValueQuick (&rt_framegen, (CLAMP (0, CVAR_TO_INT32 (rt_framegen), 2) + (key == K_LEFTARROW ? 2 : 1)) % 3);
 			break;
@@ -2230,6 +2284,9 @@ static void VID_MenuKey (int key)
 			Cvar_SetValueQuick (&rt_volume_type, newval);
 			break;
 #ifdef __APPLE__
+		case VID_OPT_RETINA:
+			Cvar_SetValueQuick (&vid_retina, vid_retina.value ? 0 : 1);
+			break;
 		case VID_OPT_FRAMEGEN:
 			Cvar_SetValueQuick (&rt_framegen, (CLAMP (0, CVAR_TO_INT32 (rt_framegen), 2) + (key == K_LEFTARROW ? 2 : 1)) % 3);
 			break;
@@ -2316,6 +2373,15 @@ static void VID_MenuDraw (cb_context_t *cbx)
 		case VID_OPT_APPLY:
 			M_Print (cbx, 16, y, "             Apply");
 			break;
+#ifdef __APPLE__
+		case VID_OPT_RETINA:
+			M_Print (cbx, 16, y, " Retina resolution");
+			if ((vid_retina.value != 0) != (vid_retina_active != 0))
+				M_Print (cbx, 184, y, vid_retina.value ? "On (restart game)" : "Off (restart game)");
+			else
+				M_Print (cbx, 184, y, va ("%s (%ix%i)", vid_retina.value ? "On" : "Off", vid.width, vid.height));
+			break;
+#endif
 
 
 		case VID_OPT_RENDERER:
