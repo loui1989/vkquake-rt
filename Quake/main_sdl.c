@@ -51,6 +51,53 @@ static void Sys_InitSDL (void)
 
 static quakeparms_t parms;
 
+#ifdef __APPLE__
+#include <unistd.h>
+
+// Hang diagnostics: if the main loop stops for 10 seconds, the stacks of all threads are
+// sampled (macOS's 'sample' tool) into hang-sample.txt in the game folder, once per run.
+static SDL_atomic_t sys_heartbeat;
+
+void Sys_Heartbeat (void)
+{
+	SDL_AtomicIncRef (&sys_heartbeat);
+}
+
+static int SDLCALL Sys_WatchdogThread (void *unused)
+{
+	int      last = -1;
+	double   since = Sys_DoubleTime ();
+	qboolean sampled = false;
+	(void)unused;
+
+	while (!sampled)
+	{
+		SDL_Delay (1000);
+		const int now = SDL_AtomicGet (&sys_heartbeat);
+		if (now != last)
+		{
+			last = now;
+			since = Sys_DoubleTime ();
+			continue;
+		}
+		if (Sys_DoubleTime () - since > 10.0)
+		{
+			char path[MAX_OSPATH];
+			char cmd[MAX_OSPATH + 128];
+			sampled = true;
+			q_snprintf (path, sizeof (path), "%s/hang-sample.txt", host_parms->basedir);
+			fprintf (stderr, "[Watchdog] the game has been stuck for 10 s, saving what each thread is doing to %s\n", path);
+			fflush (stderr);
+			q_snprintf (cmd, sizeof (cmd), "/usr/bin/sample %d 3 -mayDie -file '%s' >/dev/null 2>&1", (int)getpid (), path);
+			const int r = system (cmd);
+			fprintf (stderr, "[Watchdog] %s\n", r == 0 ? "saved" : "sampling failed");
+			fflush (stderr);
+		}
+	}
+	return 0;
+}
+#endif
+
 int main (int argc, char *argv[])
 {
 	double time, oldtime, newtime;
@@ -85,6 +132,11 @@ int main (int argc, char *argv[])
 	Sys_Printf ("Host_Init\n");
 	Host_Init ();
 
+#ifdef __APPLE__
+	if (!isDedicated)
+		SDL_DetachThread (SDL_CreateThread (Sys_WatchdogThread, "watchdog", NULL));
+#endif
+
 	oldtime = Sys_DoubleTime ();
 	if (isDedicated)
 	{
@@ -118,6 +170,9 @@ int main (int argc, char *argv[])
 			newtime = Sys_DoubleTime ();
 			time = newtime - oldtime;
 
+#ifdef __APPLE__
+			Sys_Heartbeat ();
+#endif
 			Host_Frame (time);
 
 			oldtime = newtime;

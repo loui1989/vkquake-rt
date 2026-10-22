@@ -98,10 +98,11 @@ static cvar_t                   vid_desktopfullscreen = {"vid_desktopfullscreen"
 static cvar_t                   vid_borderless = {"vid_borderless", "0", CVAR_ARCHIVE};               // QuakeSpasm
 static cvar_t                   vid_palettize = {"vid_palettize", "0", CVAR_ARCHIVE};
 #ifdef __APPLE__
-// macOS: render at the display's full (Retina) pixel resolution instead of its "looks like" size.
-// Applied when the window is created, i.e. on the next launch.
-static cvar_t                   vid_retina = {"vid_retina", "1", CVAR_ARCHIVE};
-static int                      vid_retina_active = 0;
+// macOS: the output resolution, in percent of the display's full (Retina) pixel resolution.
+// The image is rendered at this size (the upscaler's input is a fraction of it) and scaled
+// to the screen by macOS. 100 - full resolution; the minimum is the "looks like" size.
+static cvar_t                   vid_resscale = {"vid_resscale", "100", CVAR_ARCHIVE};
+static SDL_MetalView            metal_view = NULL;
 #endif
 cvar_t                          vid_filter = {"vid_filter", "1", CVAR_ARCHIVE};
 cvar_t                          vid_gamma = {"gamma", "1", CVAR_ARCHIVE};       // johnfitz -- moved here from view.c
@@ -203,12 +204,14 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_gi_history, "8") \
 	CVAR_DEF_T (rt_gi_reuse, "4") \
 	CVAR_DEF_T (rt_gi_radius, "8") \
-	CVAR_DEF_T (rt_gi_firefly, "16") \
+	CVAR_DEF_T (rt_gi_firefly, "64") \
 	CVAR_DEF_T (rt_reuse_jitter, "0") \
 	CVAR_DEF_T (rt_dn_dense, "1") \
 	CVAR_DEF_T (rt_dn_deflicker, "2") \
 	CVAR_DEF_T (rt_bluenoise, "1") \
 	CVAR_DEF_T (rt_antilag_sq, "1") \
+	CVAR_DEF_T (rt_dn_history, "64") \
+	CVAR_DEF_T (rt_dn_spechistory, "64") \
 	\
 	CVAR_DEF_T (rt_globallightmult, "10") \
 	CVAR_DEF_T (rt_globallight_r, "255") \
@@ -294,29 +297,92 @@ VID_GetPixelWidth / VID_GetPixelHeight: size of the rendered image in pixels
 (differs from the window size in points on high-DPI displays)
 =======================
 */
+#ifdef __APPLE__
+#include <objc/message.h>
+#include <objc/runtime.h>
+#include <CoreGraphics/CGGeometry.h>
+
+// pixels per point the image is rendered at: between 1 (the "looks like" size)
+// and the display's backing scale (full Retina resolution)
+static double VID_GetRenderScale (void)
+{
+	int pt_w = 0, pt_h = 0, px_w = 0, px_h = 0;
+	SDL_GetWindowSize (draw_context, &pt_w, &pt_h);
+	SDL_GetWindowSizeInPixels (draw_context, &px_w, &px_h);
+	const double backing = (pt_h > 0 && px_h > 0) ? (double)px_h / (double)pt_h : 1.0;
+	const double scale = backing * CLAMP (10.0, (double)vid_resscale.value, 100.0) / 100.0;
+	return CLAMP (1.0, scale, backing);
+}
+
+// size the Metal layer to render at VID_GetRenderScale (SDL sets it to the full
+// backing size whenever the window changes, so this is redone after that)
+static void VID_ApplyRenderScale (void)
+{
+	if (!metal_view)
+		return;
+	int pt_w = 0, pt_h = 0;
+	SDL_GetWindowSize (draw_context, &pt_w, &pt_h);
+	const double scale = VID_GetRenderScale ();
+	id           layer = (id)SDL_Metal_GetLayer (metal_view);
+	if (!layer || pt_w <= 0 || pt_h <= 0)
+		return;
+	const CGSize size = {floor (pt_w * scale + 0.5), floor (pt_h * scale + 0.5)};
+	((void (*) (id, SEL, CGFloat))objc_msgSend) (layer, sel_registerName ("setContentsScale:"), (CGFloat)scale);
+	((void (*) (id, SEL, CGSize))objc_msgSend) (layer, sel_registerName ("setDrawableSize:"), size);
+}
+#endif
+
 static int VID_GetPixelWidth (void)
 {
+#ifdef __APPLE__
+	int pt_w = 0, pt_h = 0;
+	SDL_GetWindowSize (draw_context, &pt_w, &pt_h);
+	return (int)floor (pt_w * VID_GetRenderScale () + 0.5);
+#else
 	int w = 0, h = 0;
 #if SDL_VERSION_ATLEAST(2, 26, 0)
 	SDL_GetWindowSizeInPixels (draw_context, &w, &h);
 #endif
 	return w > 0 ? w : VID_GetCurrentWidth ();
+#endif
 }
 
 static int VID_GetPixelHeight (void)
 {
+#ifdef __APPLE__
+	int pt_w = 0, pt_h = 0;
+	SDL_GetWindowSize (draw_context, &pt_w, &pt_h);
+	return (int)floor (pt_h * VID_GetRenderScale () + 0.5);
+#else
 	int w = 0, h = 0;
 #if SDL_VERSION_ATLEAST(2, 26, 0)
 	SDL_GetWindowSizeInPixels (draw_context, &w, &h);
 #endif
 	return h > 0 ? h : VID_GetCurrentHeight ();
+#endif
 }
 
 void VID_UpdatePixelSize (void)
 {
+#ifdef __APPLE__
+	VID_ApplyRenderScale ();
+#endif
 	vid.width = VID_GetPixelWidth ();
 	vid.height = VID_GetPixelHeight ();
 }
+
+#ifdef __APPLE__
+static void VID_ResScale_f (cvar_t *var)
+{
+	(void)var;
+	if (!draw_context)
+		return;
+	// as for a resized window (in_sdl.c)
+	VID_UpdatePixelSize ();
+	vid.restart_next_frame = true;
+	Cvar_FindVar ("scr_conscale")->callback (NULL);
+}
+#endif
 
 /*
 ====================
@@ -483,12 +549,8 @@ static qboolean VID_SetMode (int width, int height, int refreshrate, qboolean fu
 	{
 #ifdef __APPLE__
 		/* RTGL1 talks to MoltenVK directly; SDL only needs a Metal-capable window */
-		flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_METAL;
-		if (vid_retina.value)
-		{
-			flags |= SDL_WINDOW_ALLOW_HIGHDPI;
-			vid_retina_active = 1;
-		}
+		// high DPI: the render scale (vid_resscale) picks how much of it is used
+		flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_METAL | SDL_WINDOW_ALLOW_HIGHDPI;
 #else
 		flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN;
 #endif
@@ -541,8 +603,7 @@ static qboolean VID_SetMode (int width, int height, int refreshrate, qboolean fu
 	SDL_ShowWindow (draw_context);
 	SDL_RaiseWindow (draw_context);
 
-	vid.width = VID_GetPixelWidth ();
-	vid.height = VID_GetPixelHeight ();
+	VID_UpdatePixelSize ();
 	vid.conwidth = vid.width & 0xFFFFFFF8;
 	vid.conheight = vid.conwidth * vid.height / vid.width;
 
@@ -704,12 +765,12 @@ static void GL_InitInstance (void)
 #ifdef RG_USE_SURFACE_WIN32
 	RgWin32SurfaceCreateInfo win32Info = {.hinstance = wmInfo.info.win.hinstance, .hwnd = wmInfo.info.win.window};
 #elif defined(RG_USE_SURFACE_METAL)
-	static SDL_MetalView metal_view = NULL;
 	if (!metal_view)
 	{
 		metal_view = SDL_Metal_CreateView (draw_context);
 		if (!metal_view)
 			Sys_Error ("Couldn't create Metal view: %s", SDL_GetError ());
+		VID_UpdatePixelSize ();
 	}
 	RgMetalSurfaceCreateInfo metalInfo = {.pLayer = SDL_Metal_GetLayer (metal_view)};
 #elif RG_USE_SURFACE_XLIB
@@ -1145,6 +1206,8 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 		.indirectDeflicker = CVAR_TO_FLOAT (rt_dn_deflicker),
 		.blueNoise = CVAR_TO_BOOL (rt_bluenoise),
 		.antilagSquared = CVAR_TO_BOOL (rt_antilag_sq),
+		.maxHistory = CVAR_TO_FLOAT (rt_dn_history),
+		.reflectionMaxHistory = CVAR_TO_FLOAT (rt_dn_spechistory),
 	};
 
 	RgDrawFrameBloomParams bloom_params = {
@@ -1526,7 +1589,7 @@ void VID_Init (void)
 	const char *read_vars[] = {"vid_fullscreen",        "vid_width",    "vid_height", "vid_refreshrate", "vid_vsync",
 	                           "vid_desktopfullscreen", "vid_borderless"
 #ifdef __APPLE__
-	                           , "vid_retina"
+	                           , "vid_resscale"
 #endif
 	};
 #define num_readvars (sizeof (read_vars) / sizeof (read_vars[0]))
@@ -1541,7 +1604,8 @@ void VID_Init (void)
 	Cvar_RegisterVariable (&vid_borderless);        // QuakeSpasm
 	Cvar_RegisterVariable (&vid_palettize);
 #ifdef __APPLE__
-	Cvar_RegisterVariable (&vid_retina);
+	Cvar_RegisterVariable (&vid_resscale);
+	Cvar_SetCallback (&vid_resscale, VID_ResScale_f);
 #endif
 
 	Cvar_SetCallback (&vid_fullscreen, VID_Changed_f);
@@ -1886,7 +1950,7 @@ enum
 	// VID_OPT_REFRESHRATE,
 	VID_OPT_APPLY,
 #ifdef __APPLE__
-	VID_OPT_RETINA,
+	VID_OPT_RESSCALE,
 #endif
 
 
@@ -2164,6 +2228,28 @@ static void VID_Menu_ChooseNextAA (int vidopt, int dir)
 }
 
 
+#ifdef __APPLE__
+// output resolution steps, in percent of the full Retina resolution
+static void VID_Menu_ChooseNextResScale (int dir)
+{
+	static const float steps[] = {50, 56.25f, 60, 66.67f, 75, 83.33f, 90, 100};
+	int                nearest = 0;
+	for (int i = 1; i < (int)countof (steps); i++)
+	{
+		if (fabsf (steps[i] - vid_resscale.value) < fabsf (steps[nearest] - vid_resscale.value))
+			nearest = i;
+	}
+	// skip steps that give the same size (e.g. everything below the "looks like" size)
+	const int w = vid.width;
+	for (int i = nearest + dir; i >= 0 && i < (int)countof (steps); i += dir)
+	{
+		Cvar_SetValueQuick (&vid_resscale, steps[i]);
+		if (vid.width != w)
+			return;
+	}
+}
+#endif
+
 /*
 ================
 Lighting & noise tuning page (part of the video menu)
@@ -2182,11 +2268,14 @@ enum
 	RTQ_JITTER,
 	RTQ_DENSE,
 	RTQ_DEFLICKER,
+	RTQ_HISTORY,
+	RTQ_SPEC_HISTORY,
 	RTQ_BLUENOISE,
 	RTQ_ANTILAG_SQ,
 	RTQ_SENSIT_DIR,
 	RTQ_SENSIT_INDIR,
 	RTQ_SENSIT_SPEC,
+	RTQ_SHOW,
 	RTQ_BACK,
 	RTQ_ITEMS
 };
@@ -2194,17 +2283,17 @@ enum
 typedef struct
 {
 	const char *name;
-	float       gi_history, gi_reuse, gi_radius, gi_firefly, jitter, dense, deflicker, bluenoise, antilag_sq;
+	float       gi_history, gi_reuse, gi_radius, gi_firefly, jitter, dense, deflicker, bluenoise, antilag_sq, history, spechistory;
 } rtq_preset_t;
 
 static const rtq_preset_t rtq_presets[] = {
 	// no reuse of neighbours' light samples: closest to Quake II RTX, a bit more fine noise
-	{"Stable", 8, 0, 8, 16, 0, 1, 2, 1, 1},
-	{"Balanced", 8, 4, 8, 16, 0, 1, 2, 1, 1},
+	{"Stable", 8, 0, 8, 64, 0, 1, 2, 1, 1, 64, 64},
+	{"Balanced", 8, 4, 8, 64, 0, 1, 2, 1, 1, 64, 64},
 	// neighbours' samples are checked for visibility: no light leaks, costs 4 rays per pixel
-	{"Accurate", 8, 8, 8, 16, 0, 1, 2, 1, 1},
+	{"Accurate", 8, 8, 8, 64, 0, 1, 2, 1, 1, 64, 64},
 	// as before these settings existed
-	{"Original", 20, 4, 8, 0, 2, 0, 0, 0, 0},
+	{"Original", 20, 4, 8, 0, 2, 0, 0, 0, 0, 256, 256},
 };
 #define RTQ_PRESET_COUNT ((int)countof (rtq_presets))
 
@@ -2215,7 +2304,8 @@ static int RTQ_CurrentPreset (void)
 		const rtq_preset_t *p = &rtq_presets[i];
 		if (rt_gi_history.value == p->gi_history && rt_gi_reuse.value == p->gi_reuse && rt_gi_radius.value == p->gi_radius &&
 		    rt_gi_firefly.value == p->gi_firefly && rt_reuse_jitter.value == p->jitter && rt_dn_dense.value == p->dense &&
-		    rt_dn_deflicker.value == p->deflicker && rt_bluenoise.value == p->bluenoise && rt_antilag_sq.value == p->antilag_sq)
+		    rt_dn_deflicker.value == p->deflicker && rt_bluenoise.value == p->bluenoise && rt_antilag_sq.value == p->antilag_sq &&
+		    rt_dn_history.value == p->history && rt_dn_spechistory.value == p->spechistory)
 		{
 			return i;
 		}
@@ -2241,6 +2331,8 @@ static void RTQ_ApplyPreset (int i)
 	Cvar_SetValueQuick (&rt_dn_deflicker, p->deflicker);
 	Cvar_SetValueQuick (&rt_bluenoise, p->bluenoise);
 	Cvar_SetValueQuick (&rt_antilag_sq, p->antilag_sq);
+	Cvar_SetValueQuick (&rt_dn_history, p->history);
+	Cvar_SetValueQuick (&rt_dn_spechistory, p->spechistory);
 }
 
 // step a cvar through a list of values (from the nearest one)
@@ -2268,6 +2360,9 @@ static void RTQ_Change (int dir)
 	static const float sensit_dir[] = {0, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.8f, 1};
 	static const float sensit_indir[] = {0, 0.02f, 0.04f, 0.06f, 0.1f, 0.15f, 0.2f, 0.3f, 0.5f};
 	static const float sensit_spec[] = {0, 0.01f, 0.02f, 0.03f, 0.05f, 0.1f, 0.2f, 0.3f, 0.5f};
+	static const float dn_history[] = {8, 16, 24, 32, 48, 64, 96, 128, 256};
+	static const float show[] = {0, RG_DEBUG_DRAW_ONLY_DIFFUSE_DIRECT_BIT, RG_DEBUG_DRAW_ONLY_DIFFUSE_INDIRECT_BIT,
+	                             RG_DEBUG_DRAW_ONLY_SPECULAR_BIT, RG_DEBUG_DRAW_GRADIENTS_BIT};
 
 	switch (rtq_cursor)
 	{
@@ -2290,6 +2385,17 @@ static void RTQ_Change (int dir)
 	case RTQ_SENSIT_DIR:   RTQ_Step (&rt_sensit_dir, sensit_dir, countof (sensit_dir), dir); break;
 	case RTQ_SENSIT_INDIR: RTQ_Step (&rt_sensit_indir, sensit_indir, countof (sensit_indir), dir); break;
 	case RTQ_SENSIT_SPEC:  RTQ_Step (&rt_sensit_spec, sensit_spec, countof (sensit_spec), dir); break;
+	case RTQ_HISTORY:      RTQ_Step (&rt_dn_history, dn_history, countof (dn_history), dir); break;
+	case RTQ_SPEC_HISTORY: RTQ_Step (&rt_dn_spechistory, dn_history, countof (dn_history), dir); break;
+	case RTQ_SHOW:
+	{
+		int i = 0;
+		while (i < (int)countof (show) && show[i] != rt_debugflags.value)
+			i++;
+		i = i >= (int)countof (show) ? 0 : (i + dir + (int)countof (show)) % (int)countof (show);
+		Cvar_SetValueQuick (&rt_debugflags, show[i]);
+		break;
+	}
 	default: break;
 	}
 }
@@ -2302,6 +2408,7 @@ static void RTQ_MenuKey (int key)
 	case K_BACKSPACE:
 		S_LocalSound ("misc/menu1.wav");
 		rtq_open = false;
+		Cvar_SetValueQuick (&rt_debugflags, 0); // the debug view is only for this page
 		break;
 	case K_UPARROW:
 		S_LocalSound ("misc/menu1.wav");
@@ -2323,7 +2430,10 @@ static void RTQ_MenuKey (int key)
 	case K_KP_ENTER:
 		m_entersound = true;
 		if (rtq_cursor == RTQ_BACK)
+		{
 			rtq_open = false;
+			Cvar_SetValueQuick (&rt_debugflags, 0);
+		}
 		else
 			RTQ_Change (1);
 		break;
@@ -2334,16 +2444,11 @@ static void RTQ_MenuKey (int key)
 
 static void RTQ_MenuDraw (cb_context_t *cbx)
 {
-	int     y = 4;
-	qpic_t *p = Draw_CachePic ("gfx/qplaque.lmp");
-	M_DrawTransPic (cbx, 16, y, p);
-	p = Draw_CachePic ("gfx/p_option.lmp");
-	M_DrawPic (cbx, (320 - p->width) / 2, y, p);
-	y += 28;
+	int y = 4;
 
 	const char *title = "Lighting & Noise";
 	M_PrintWhite (cbx, (320 - 8 * strlen (title)) / 2, y, title);
-	y += 16;
+	y += 12;
 
 	for (int i = 0; i < RTQ_ITEMS; i++)
 	{
@@ -2376,18 +2481,26 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 			value = rt_gi_firefly.value <= 0 ? "off" : va ("%gx average", rt_gi_firefly.value);
 			break;
 		case RTQ_JITTER:
-			label = "     Reuse jitter";
+			label = "      Reuse jitter";
 			value = rt_reuse_jitter.value <= 0 ? "off" : va ("%g px", rt_reuse_jitter.value);
 			break;
 		case RTQ_DENSE:
 			M_PrintWhite (cbx, 16, y, "Denoiser");
 			y += 8;
-			label = "   Bounced light";
+			label = "     Bounced light";
 			value = rt_dn_dense.value ? "dense" : "sparse";
 			break;
 		case RTQ_DEFLICKER:
 			label = "         Deflicker";
 			value = rt_dn_deflicker.value <= 0 ? "off" : va ("%gx average", rt_dn_deflicker.value);
+			break;
+		case RTQ_HISTORY:
+			label = "     Light history";
+			value = va ("%d frames", (int)rt_dn_history.value);
+			break;
+		case RTQ_SPEC_HISTORY:
+			label = "   Reflect history";
+			value = va ("%d frames", (int)rt_dn_spechistory.value);
 			break;
 		case RTQ_BLUENOISE:
 			label = "     Noise pattern";
@@ -2398,16 +2511,25 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 			value = rt_antilag_sq.value ? "squared" : "linear";
 			break;
 		case RTQ_SENSIT_DIR:
-			label = "  Direct reaction";
+			label = "   Direct reaction";
 			value = va ("%g", rt_sensit_dir.value);
 			break;
 		case RTQ_SENSIT_INDIR:
-			label = " Bounced reaction";
+			label = "  Bounced reaction";
 			value = va ("%g", rt_sensit_indir.value);
 			break;
 		case RTQ_SENSIT_SPEC:
-			label = " Reflect reaction";
+			label = "  Reflect reaction";
 			value = va ("%g", rt_sensit_spec.value);
+			break;
+		case RTQ_SHOW:
+			label = "              Show";
+			value = rt_debugflags.value == RG_DEBUG_DRAW_ONLY_DIFFUSE_DIRECT_BIT     ? "direct light"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_ONLY_DIFFUSE_INDIRECT_BIT ? "bounced light"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_ONLY_SPECULAR_BIT         ? "reflections"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_GRADIENTS_BIT             ? "anti-lag"
+			        : rt_debugflags.value == 0                                       ? "everything"
+			                                                                         : "custom";
 			break;
 		case RTQ_BACK:
 			label = "              Back";
@@ -2431,11 +2553,14 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 		{"Off keeps samples from drifting", "between pixels (crawling blotches)"},
 		{"Dense: smoother bounced light", ""},
 		{"Dims flickering bright spots", "lower = stronger"},
+		{"Shorter: less ghosting behind", "moving things, a bit more noise"},
+		{"Shorter: reflections of moving", "things ghost less, more noise"},
 		{"Blue noise: finer, even grain", ""},
 		{"Squared: noise doesn't reset", "the history, changes still do"},
 		{"Higher: direct light reacts faster,", "but noisier"},
 		{"Higher: bounced light reacts faster,", "but noisier"},
 		{"Higher: reflections react faster,", "but noisier"},
+		{"See one part of the lighting alone,", "e.g. to find what ghosts"},
 		{"", ""},
 	};
 	y += 8;
@@ -2539,8 +2664,8 @@ static void VID_MenuKey (int key)
 			Cvar_SetValueQuick (&rt_volume_type, newval);
 			break;
 #ifdef __APPLE__
-		case VID_OPT_RETINA:
-			Cvar_SetValueQuick (&vid_retina, vid_retina.value ? 0 : 1);
+		case VID_OPT_RESSCALE:
+			VID_Menu_ChooseNextResScale (key == K_LEFTARROW ? -1 : 1);
 			break;
 		case VID_OPT_FRAMEGEN:
 			Cvar_SetValueQuick (&rt_framegen, (CLAMP (0, CVAR_TO_INT32 (rt_framegen), 2) + (key == K_LEFTARROW ? 2 : 1)) % 3);
@@ -2592,8 +2717,8 @@ static void VID_MenuKey (int key)
 			Cvar_SetValueQuick (&rt_volume_type, newval);
 			break;
 #ifdef __APPLE__
-		case VID_OPT_RETINA:
-			Cvar_SetValueQuick (&vid_retina, vid_retina.value ? 0 : 1);
+		case VID_OPT_RESSCALE:
+			VID_Menu_ChooseNextResScale (key == K_LEFTARROW ? -1 : 1);
 			break;
 		case VID_OPT_FRAMEGEN:
 			Cvar_SetValueQuick (&rt_framegen, (CLAMP (0, CVAR_TO_INT32 (rt_framegen), 2) + (key == K_LEFTARROW ? 2 : 1)) % 3);
@@ -2692,12 +2817,9 @@ static void VID_MenuDraw (cb_context_t *cbx)
 			M_Print (cbx, 16, y, "             Apply");
 			break;
 #ifdef __APPLE__
-		case VID_OPT_RETINA:
-			M_Print (cbx, 16, y, " Retina resolution");
-			if ((vid_retina.value != 0) != (vid_retina_active != 0))
-				M_Print (cbx, 184, y, vid_retina.value ? "On (restart game)" : "Off (restart game)");
-			else
-				M_Print (cbx, 184, y, va ("%s (%ix%i)", vid_retina.value ? "On" : "Off", vid.width, vid.height));
+		case VID_OPT_RESSCALE:
+			M_Print (cbx, 16, y, " Output resolution");
+			M_Print (cbx, 184, y, va ("%ix%i", vid.width, vid.height));
 			break;
 #endif
 

@@ -935,6 +935,9 @@ int SCR_ModalMessage (const char *text, float timeout) // johnfitz -- timeout
 		Sys_SendKeyEvents ();
 		Key_GetGrabbedInput (&lastkey, &lastchar);
 		Sys_Sleep (16);
+#ifdef __APPLE__
+		Sys_Heartbeat (); // waiting for the player, not stuck
+#endif
 		if (timeout)
 			time2 = Sys_DoubleTime (); // johnfitz -- zero timeout means wait forever.
 	} while (lastchar != 'y' && lastchar != 'Y' && lastchar != 'n' && lastchar != 'N' && lastkey != K_ESCAPE && lastkey != K_ABUTTON && lastkey != K_BBUTTON &&

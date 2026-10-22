@@ -24,6 +24,8 @@ target_include_directories(vkquake PRIVATE ${Q} "${RTGL1_SDK_PATH}/Include")
 target_compile_definitions(vkquake PRIVATE USE_SDL2 USE_CODEC_WAVE USE_CODEC_UMX NDEBUG)
 if(APPLE)
     target_compile_definitions(vkquake PRIVATE RG_USE_SURFACE_METAL)
+    # objc_msgSend: the Metal layer's render scale (gl_vidsdl.c)
+    target_link_libraries(vkquake PRIVATE objc)
 endif()
 target_compile_options(vkquake PRIVATE -O2 -Wno-unused-function -Wno-deprecated-declarations
     -Wno-pointer-sign -Wno-incompatible-pointer-types-discards-qualifiers -Wno-missing-braces)

@@ -25,6 +25,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // sys.h -- non-portable functions
 
 void Sys_Init (void);
+#ifdef __APPLE__
+void Sys_Heartbeat (void); // the main loop is alive (hang watchdog, main_sdl.c)
+#endif
 
 //
 // file IO
