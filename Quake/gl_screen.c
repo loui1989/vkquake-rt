@@ -560,8 +560,14 @@ void SCR_DrawFPS (cb_context_t *cbx)
 
 	if (scr_showfps.value)
 	{
-		char st[16];
+		char st[32];
 		int  x, y;
+#ifdef __APPLE__
+		// with frame generation, every rendered frame is shown with a generated one
+		if (rgIsFrameGenerationActive (vulkan_globals.instance))
+			q_snprintf (st, sizeof (st), "%4.0f fps (FG %.0f)", lastfps, lastfps * 2.0);
+		else
+#endif
 		sprintf (st, "%4.0f fps", lastfps);
 		x = 320 - (strlen (st) << 3);
 		y = 200 - 8;

@@ -188,6 +188,7 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_vintage, "0") \
 	CVAR_DEF_T (rt_upscale_fsr2, "2") \
 	CVAR_DEF_T (rt_upscale_dlss, "0") \
+	CVAR_DEF_T (rt_framegen, "0") \
 	\
 	CVAR_DEF_T (rt_sensit_dir, "0.4") \
 	CVAR_DEF_T (rt_sensit_indir, "0.06") \
@@ -922,6 +923,11 @@ static void UpscaleCvarsToRtgl (RgDrawFrameRenderResolutionParams *pDst)
 	{
 		pDst->sharpenTechnique = GetSharpenTechniqueFromCvar ();
 	}
+
+#ifdef __APPLE__
+	// MetalFX frame generation works on top of the MetalFX upscaler: 0 off, 1 on, 2 auto
+	pDst->frameGeneration = amdFsr ? (uint32_t)CLAMP (0, CVAR_TO_INT32 (rt_framegen), 2) : 0;
+#endif
 }
 
 static const char *GetUpscalerOptionName (int i, RgRenderUpscaleTechnique technique)
@@ -1816,6 +1822,9 @@ enum
 
 
 	VID_OPT_FSR2,
+#ifdef __APPLE__
+	VID_OPT_FRAMEGEN,
+#endif
 	VID_OPT_DLSS,
 	VID_OPT_RENDER_SCALE,
 
@@ -2170,6 +2179,11 @@ static void VID_MenuKey (int key)
 			int newval = CVAR_TO_UINT32 (rt_volume_type) == 2 ? 1 : 2;
 			Cvar_SetValueQuick (&rt_volume_type, newval);
 			break;
+#ifdef __APPLE__
+		case VID_OPT_FRAMEGEN:
+			Cvar_SetValueQuick (&rt_framegen, (CLAMP (0, CVAR_TO_INT32 (rt_framegen), 2) + (key == K_LEFTARROW ? 2 : 1)) % 3);
+			break;
+#endif
 		default:
 			break;
 		}
@@ -2215,6 +2229,11 @@ static void VID_MenuKey (int key)
 			int newval = CVAR_TO_UINT32 (rt_volume_type) == 2 ? 1 : 2;
 			Cvar_SetValueQuick (&rt_volume_type, newval);
 			break;
+#ifdef __APPLE__
+		case VID_OPT_FRAMEGEN:
+			Cvar_SetValueQuick (&rt_framegen, (CLAMP (0, CVAR_TO_INT32 (rt_framegen), 2) + (key == K_LEFTARROW ? 2 : 1)) % 3);
+			break;
+#endif
 		default:
 			break;
 		}
@@ -2328,6 +2347,20 @@ static void VID_MenuDraw (cb_context_t *cbx)
 #endif
 			M_Print (cbx, 184, y, GetUpscalerOptionName (menu_settings.rt_upscale_fsr2, RG_RENDER_UPSCALE_TECHNIQUE_AMD_FSR2));
 			break;
+#ifdef __APPLE__
+		case VID_OPT_FRAMEGEN:
+			M_Print (cbx, 16, y, "  Frame generation");
+			if (!rgIsRenderUpscaleTechniqueAvailable (vulkan_globals.instance, RG_RENDER_UPSCALE_TECHNIQUE_AMD_FSR2))
+				M_Print (cbx, 184, y, "Not Available");
+			else if (menu_settings.rt_upscale_fsr2 == 0)
+				M_Print (cbx, 184, y, "needs MetalFX");
+			else
+			{
+				const int fg = CLAMP (0, CVAR_TO_INT32 (rt_framegen), 2);
+				M_Print (cbx, 184, y, fg == 0 ? "Off" : fg == 1 ? "On" : "Auto");
+			}
+			break;
+#endif
 		case VID_OPT_DLSS:
 			M_Print (cbx, 16, y, "       Nvidia DLSS");
 			M_Print (cbx, 184, y, GetUpscalerOptionName (menu_settings.rt_upscale_dlss, RG_RENDER_UPSCALE_TECHNIQUE_NVIDIA_DLSS));
