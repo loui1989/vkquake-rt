@@ -2367,8 +2367,15 @@ static void RTQ_Change (int dir)
 	static const float sensit_spec[] = {0, 0.01f, 0.02f, 0.03f, 0.05f, 0.1f, 0.2f, 0.3f, 0.5f};
 	static const float dn_history[] = {8, 16, 24, 32, 48, 64, 96, 128, 256};
 	static const float fog_history[] = {0, 0.5f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f};
-	static const float show[] = {0, RG_DEBUG_DRAW_ONLY_DIFFUSE_DIRECT_BIT, RG_DEBUG_DRAW_ONLY_DIFFUSE_INDIRECT_BIT,
-	                             RG_DEBUG_DRAW_ONLY_SPECULAR_BIT, RG_DEBUG_DRAW_GRADIENTS_BIT};
+	static const float show[] = {0,
+	                             RG_DEBUG_DRAW_ONLY_DIFFUSE_DIRECT_BIT,
+	                             RG_DEBUG_DRAW_ONLY_DIFFUSE_INDIRECT_BIT,
+	                             RG_DEBUG_DRAW_ONLY_SPECULAR_BIT,
+	                             RG_DEBUG_DRAW_UNFILTERED_DIFFUSE_DIRECT_BIT,
+	                             RG_DEBUG_DRAW_UNFILTERED_DIFFUSE_INDIRECT_BIT,
+	                             RG_DEBUG_DRAW_UNFILTERED_SPECULAR_BIT,
+	                             RG_DEBUG_DRAW_GRADIENTS_BIT,
+	                             RG_DEBUG_DRAW_MOTION_VECTORS_BIT};
 
 	switch (rtq_cursor)
 	{
@@ -2535,12 +2542,16 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 			break;
 		case RTQ_SHOW:
 			label = "              Show";
-			value = rt_debugflags.value == RG_DEBUG_DRAW_ONLY_DIFFUSE_DIRECT_BIT     ? "direct light"
-			        : rt_debugflags.value == RG_DEBUG_DRAW_ONLY_DIFFUSE_INDIRECT_BIT ? "bounced light"
-			        : rt_debugflags.value == RG_DEBUG_DRAW_ONLY_SPECULAR_BIT         ? "reflections"
-			        : rt_debugflags.value == RG_DEBUG_DRAW_GRADIENTS_BIT             ? "anti-lag"
-			        : rt_debugflags.value == 0                                       ? "everything"
-			                                                                         : "custom";
+			value = rt_debugflags.value == RG_DEBUG_DRAW_ONLY_DIFFUSE_DIRECT_BIT           ? "direct light"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_ONLY_DIFFUSE_INDIRECT_BIT       ? "bounced light"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_ONLY_SPECULAR_BIT               ? "reflections"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_UNFILTERED_DIFFUSE_DIRECT_BIT   ? "raw direct"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_UNFILTERED_DIFFUSE_INDIRECT_BIT ? "raw bounced"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_UNFILTERED_SPECULAR_BIT         ? "raw reflections"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_GRADIENTS_BIT                   ? "anti-lag"
+			        : rt_debugflags.value == RG_DEBUG_DRAW_MOTION_VECTORS_BIT              ? "motion"
+			        : rt_debugflags.value == 0                                             ? "everything"
+			                                                                               : "custom";
 			break;
 		case RTQ_BACK:
 			label = "              Back";
@@ -2572,7 +2583,7 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 		{"Higher: direct light reacts faster,", "but noisier"},
 		{"Higher: bounced light reacts faster,", "but noisier"},
 		{"Higher: reflections react faster,", "but noisier"},
-		{"See one part of the lighting alone,", "e.g. to find what ghosts"},
+		{"One part alone; 'raw' = before the", "denoiser, e.g. to find what ghosts"},
 		{"", ""},
 	};
 	y += 8;
