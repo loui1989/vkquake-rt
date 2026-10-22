@@ -1562,7 +1562,12 @@ void VID_Init (void)
 		width = display_width;
 		height = display_height;
 		refreshrate = display_refreshrate;
+#ifdef __APPLE__
+		// first launch (vid_width/vid_height are -1): keep the fullscreen default
+		fullscreen = (int)vid_fullscreen.value;
+#else
 		fullscreen = false;
+#endif
 	}
 
 	if (!VID_ValidMode (width, height, refreshrate, fullscreen))
