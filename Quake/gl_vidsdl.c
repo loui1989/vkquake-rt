@@ -213,6 +213,7 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_dn_history, "64") \
 	CVAR_DEF_T (rt_dn_spechistory, "64") \
 	CVAR_DEF_T (rt_fog_history, "0.85") \
+	CVAR_DEF_T (rt_viewer, "1") \
 	\
 	CVAR_DEF_T (rt_globallightmult, "10") \
 	CVAR_DEF_T (rt_globallight_r, "255") \
@@ -1196,6 +1197,16 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 		.polygonalLightSpotlightFactor = 2.0f,
 		.lightUniqueIdIgnoreFirstPersonViewerShadows = NULL,
 	};
+
+	{
+		// the Show debug views (Lighting & noise) last until the game is restarted
+		static qboolean debugflags_reset = false;
+		if (!debugflags_reset)
+		{
+			debugflags_reset = true;
+			Cvar_SetValueQuick (&rt_debugflags, 0);
+		}
+	}
 
 	RgDrawFrameDenoisingParams denoising_params = {
 		.indirectHistory = CVAR_TO_UINT32 (rt_gi_history),
@@ -2278,6 +2289,7 @@ enum
 	RTQ_SENSIT_DIR,
 	RTQ_SENSIT_INDIR,
 	RTQ_SENSIT_SPEC,
+	RTQ_VIEWER,
 	RTQ_SHOW,
 	RTQ_BACK,
 	RTQ_ITEMS
@@ -2401,6 +2413,7 @@ static void RTQ_Change (int dir)
 	case RTQ_HISTORY:      RTQ_Step (&rt_dn_history, dn_history, countof (dn_history), dir); break;
 	case RTQ_SPEC_HISTORY: RTQ_Step (&rt_dn_spechistory, dn_history, countof (dn_history), dir); break;
 	case RTQ_FOG_HISTORY:  RTQ_Step (&rt_fog_history, fog_history, countof (fog_history), dir); break;
+	case RTQ_VIEWER:       Cvar_SetValueQuick (&rt_viewer, rt_viewer.value ? 0 : 1); break;
 	case RTQ_SHOW:
 	{
 		int i = 0;
@@ -2422,7 +2435,6 @@ static void RTQ_MenuKey (int key)
 	case K_BACKSPACE:
 		S_LocalSound ("misc/menu1.wav");
 		rtq_open = false;
-		Cvar_SetValueQuick (&rt_debugflags, 0); // the debug view is only for this page
 		break;
 	case K_UPARROW:
 		S_LocalSound ("misc/menu1.wav");
@@ -2444,10 +2456,7 @@ static void RTQ_MenuKey (int key)
 	case K_KP_ENTER:
 		m_entersound = true;
 		if (rtq_cursor == RTQ_BACK)
-		{
 			rtq_open = false;
-			Cvar_SetValueQuick (&rt_debugflags, 0);
-		}
 		else
 			RTQ_Change (1);
 		break;
@@ -2540,6 +2549,10 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 			label = "  Reflect reaction";
 			value = va ("%g", rt_sensit_spec.value);
 			break;
+		case RTQ_VIEWER:
+			label = "     Your own body";
+			value = rt_viewer.value ? "in reflections" : "hidden";
+			break;
 		case RTQ_SHOW:
 			label = "              Show";
 			value = rt_debugflags.value == RG_DEBUG_DRAW_ONLY_DIFFUSE_DIRECT_BIT           ? "direct light"
@@ -2583,10 +2596,10 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 		{"Higher: direct light reacts faster,", "but noisier"},
 		{"Higher: bounced light reacts faster,", "but noisier"},
 		{"Higher: reflections react faster,", "but noisier"},
+		{"Your body (holding a gun) seen in", "reflections and its shadow"},
 		{"One part alone; 'raw' = before the", "denoiser, e.g. to find what ghosts"},
 		{"", ""},
 	};
-	y += 8;
 	M_PrintWhite (cbx, 16, y, hints[rtq_cursor][0]);
 	M_PrintWhite (cbx, 16, y + 8, hints[rtq_cursor][1]);
 }

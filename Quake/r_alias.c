@@ -29,6 +29,7 @@ extern cvar_t r_drawflat, gl_fullbrights, r_lerpmodels, r_lerpmove, r_showtris; 
 extern cvar_t scr_fov;
 
 extern cvar_t rt_model_rough, rt_model_metal, rt_enable_pvs;
+extern cvar_t rt_viewer;
 extern cvar_t rt_viewm_fovscale, rt_viewm_wide;
 extern cvar_t rt_classic_render;
 extern cvar_t rt_dlight_intensity, rt_dlight_radius;
@@ -203,6 +204,12 @@ static void GL_DrawAliasFrame (
 	qboolean rasterize = entity_alpha < 1.0f;
 	qboolean isfirstperson = (e == &cl.viewent);
 	qboolean isviewer = (e == &cl.entities[cl.viewentity]) && !CVAR_TO_BOOL (chase_active);
+
+	// the player's own body: unseen directly, only in reflections and shadows
+	if (isviewer && !CVAR_TO_BOOL (rt_viewer))
+	{
+		return;
+	}
 
 	if (tx && tx->rtcustomtextype == RT_CUSTOMTEXTUREINFO_TYPE_RASTER_LIGHT)
 	{
