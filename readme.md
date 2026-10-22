@@ -4,7 +4,7 @@ This fork runs **Quake: Ray Traced** natively on Apple Silicon Macs - no CrossOv
 
 ## What you need
 
-- A Mac with **Apple Silicon** (M1 or newer). Tested on an M3 Max with macOS 27.2 - other Apple Silicon Macs on a recent macOS may work. Intel Macs are not supported.
+- A raytracing-capable Mac with **Apple Silicon** (M3 or newer). Tested on an M3 Max with macOS 27.2 - other Apple Silicon Macs on a recent macOS may work. Intel Macs are not supported.
 - **Your own copy of Quake** (Steam or GOG): the folder that contains `id1/pak0.pak`. Steam's Quake is Windows-only, so copy the folder from a PC (usually `C:\Program Files (x86)\Steam\steamapps\common\Quake` - launch the game there once first), or use the one inside a CrossOver bottle (found automatically).
 - **The Quake RT release** (free, by Sultim Tsyrendashiev): download the zip from [sultim-t/vkquake-rt releases](https://github.com/sultim-t/vkquake-rt/releases) and unzip it, e.g. into Downloads.
 
