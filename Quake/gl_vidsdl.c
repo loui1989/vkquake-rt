@@ -212,6 +212,7 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_antilag_sq, "1") \
 	CVAR_DEF_T (rt_dn_history, "64") \
 	CVAR_DEF_T (rt_dn_spechistory, "64") \
+	CVAR_DEF_T (rt_fog_history, "0.85") \
 	\
 	CVAR_DEF_T (rt_globallightmult, "10") \
 	CVAR_DEF_T (rt_globallight_r, "255") \
@@ -1208,6 +1209,7 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 		.antilagSquared = CVAR_TO_BOOL (rt_antilag_sq),
 		.maxHistory = CVAR_TO_FLOAT (rt_dn_history),
 		.reflectionMaxHistory = CVAR_TO_FLOAT (rt_dn_spechistory),
+		.fogHistory = CVAR_TO_FLOAT (rt_fog_history),
 	};
 
 	RgDrawFrameBloomParams bloom_params = {
@@ -2270,6 +2272,7 @@ enum
 	RTQ_DEFLICKER,
 	RTQ_HISTORY,
 	RTQ_SPEC_HISTORY,
+	RTQ_FOG_HISTORY,
 	RTQ_BLUENOISE,
 	RTQ_ANTILAG_SQ,
 	RTQ_SENSIT_DIR,
@@ -2283,17 +2286,17 @@ enum
 typedef struct
 {
 	const char *name;
-	float       gi_history, gi_reuse, gi_radius, gi_firefly, jitter, dense, deflicker, bluenoise, antilag_sq, history, spechistory;
+	float       gi_history, gi_reuse, gi_radius, gi_firefly, jitter, dense, deflicker, bluenoise, antilag_sq, history, spechistory, foghistory;
 } rtq_preset_t;
 
 static const rtq_preset_t rtq_presets[] = {
 	// no reuse of neighbours' light samples: closest to Quake II RTX, a bit more fine noise
-	{"Stable", 8, 0, 8, 64, 0, 1, 2, 1, 1, 64, 64},
-	{"Balanced", 8, 4, 8, 64, 0, 1, 2, 1, 1, 64, 64},
+	{"Stable", 8, 0, 8, 64, 0, 1, 2, 1, 1, 64, 64, 0.85f},
+	{"Balanced", 8, 4, 8, 64, 0, 1, 2, 1, 1, 64, 64, 0.85f},
 	// neighbours' samples are checked for visibility: no light leaks, costs 4 rays per pixel
-	{"Accurate", 8, 8, 8, 64, 0, 1, 2, 1, 1, 64, 64},
+	{"Accurate", 8, 8, 8, 64, 0, 1, 2, 1, 1, 64, 64, 0.85f},
 	// as before these settings existed
-	{"Original", 20, 4, 8, 0, 2, 0, 0, 0, 0, 256, 256},
+	{"Original", 20, 4, 8, 0, 2, 0, 0, 0, 0, 256, 256, 0.95f},
 };
 #define RTQ_PRESET_COUNT ((int)countof (rtq_presets))
 
@@ -2305,7 +2308,8 @@ static int RTQ_CurrentPreset (void)
 		if (rt_gi_history.value == p->gi_history && rt_gi_reuse.value == p->gi_reuse && rt_gi_radius.value == p->gi_radius &&
 		    rt_gi_firefly.value == p->gi_firefly && rt_reuse_jitter.value == p->jitter && rt_dn_dense.value == p->dense &&
 		    rt_dn_deflicker.value == p->deflicker && rt_bluenoise.value == p->bluenoise && rt_antilag_sq.value == p->antilag_sq &&
-		    rt_dn_history.value == p->history && rt_dn_spechistory.value == p->spechistory)
+		    rt_dn_history.value == p->history && rt_dn_spechistory.value == p->spechistory &&
+		    rt_fog_history.value == p->foghistory)
 		{
 			return i;
 		}
@@ -2333,6 +2337,7 @@ static void RTQ_ApplyPreset (int i)
 	Cvar_SetValueQuick (&rt_antilag_sq, p->antilag_sq);
 	Cvar_SetValueQuick (&rt_dn_history, p->history);
 	Cvar_SetValueQuick (&rt_dn_spechistory, p->spechistory);
+	Cvar_SetValueQuick (&rt_fog_history, p->foghistory);
 }
 
 // step a cvar through a list of values (from the nearest one)
@@ -2361,6 +2366,7 @@ static void RTQ_Change (int dir)
 	static const float sensit_indir[] = {0, 0.02f, 0.04f, 0.06f, 0.1f, 0.15f, 0.2f, 0.3f, 0.5f};
 	static const float sensit_spec[] = {0, 0.01f, 0.02f, 0.03f, 0.05f, 0.1f, 0.2f, 0.3f, 0.5f};
 	static const float dn_history[] = {8, 16, 24, 32, 48, 64, 96, 128, 256};
+	static const float fog_history[] = {0, 0.5f, 0.7f, 0.8f, 0.85f, 0.9f, 0.95f};
 	static const float show[] = {0, RG_DEBUG_DRAW_ONLY_DIFFUSE_DIRECT_BIT, RG_DEBUG_DRAW_ONLY_DIFFUSE_INDIRECT_BIT,
 	                             RG_DEBUG_DRAW_ONLY_SPECULAR_BIT, RG_DEBUG_DRAW_GRADIENTS_BIT};
 
@@ -2387,6 +2393,7 @@ static void RTQ_Change (int dir)
 	case RTQ_SENSIT_SPEC:  RTQ_Step (&rt_sensit_spec, sensit_spec, countof (sensit_spec), dir); break;
 	case RTQ_HISTORY:      RTQ_Step (&rt_dn_history, dn_history, countof (dn_history), dir); break;
 	case RTQ_SPEC_HISTORY: RTQ_Step (&rt_dn_spechistory, dn_history, countof (dn_history), dir); break;
+	case RTQ_FOG_HISTORY:  RTQ_Step (&rt_fog_history, fog_history, countof (fog_history), dir); break;
 	case RTQ_SHOW:
 	{
 		int i = 0;
@@ -2502,6 +2509,10 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 			label = "   Reflect history";
 			value = va ("%d frames", (int)rt_dn_spechistory.value);
 			break;
+		case RTQ_FOG_HISTORY:
+			label = "       Fog history";
+			value = rt_fog_history.value <= 0 ? "off" : va ("%d%% kept", (int)(rt_fog_history.value * 100 + 0.5f));
+			break;
 		case RTQ_BLUENOISE:
 			label = "     Noise pattern";
 			value = rt_bluenoise.value ? "blue noise" : "white noise";
@@ -2555,6 +2566,7 @@ static void RTQ_MenuDraw (cb_context_t *cbx)
 		{"Dims flickering bright spots", "lower = stronger"},
 		{"Shorter: less ghosting behind", "moving things, a bit more noise"},
 		{"Shorter: reflections of moving", "things ghost less, more noise"},
+		{"Lower: fog and light shafts trail", "less when moving, a bit noisier"},
 		{"Blue noise: finer, even grain", ""},
 		{"Squared: noise doesn't reset", "the history, changes still do"},
 		{"Higher: direct light reacts faster,", "but noisier"},
