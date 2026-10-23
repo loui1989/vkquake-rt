@@ -1118,6 +1118,31 @@ void R_DrawTextureChains_ShowTris (cb_context_t *cbx, qmodel_t *model, texchain_
 	}
 }
 
+// The distinct lightmap textures of a texture chain's surfaces, in order of appearance, so that
+// the chain can be uploaded as one batch per lightmap: the surfaces aren't sorted by lightmap,
+// and starting a new batch at every change made one geometry per surface or two (thousands
+// in a map with a lot of water, all rebuilt every frame). Returns the count, at most max.
+static int RT_ChainLightmaps (msurface_t *first, texchain_t chain, int *out, int max)
+{
+	int n = 0;
+	for (msurface_t *s = first; s; s = s->texturechains[chain])
+	{
+		int k;
+		for (k = 0; k < n; k++)
+			if (out[k] == s->lightmaptexturenum)
+				break;
+		if (k == n)
+		{
+			if (n == max)
+				return -1; // too many: no grouping
+			out[n++] = s->lightmaptexturenum;
+		}
+	}
+	return n;
+}
+
+#define RT_MAX_CHAIN_LIGHTMAPS 64
+
 /*
 ================
 R_DrawTextureChains_Water -- johnfitz
@@ -1140,8 +1165,15 @@ void R_DrawTextureChains_Water (cb_context_t *cbx, qmodel_t *model, entity_t *en
 		
 		RT_ClearBatch (cbx);
 
+		int lms[RT_MAX_CHAIN_LIGHTMAPS];
+		int numlms = RT_ChainLightmaps (t->texturechains[chain], chain, lms, RT_MAX_CHAIN_LIGHTMAPS);
+
+		for (int lmi = 0; lmi < (numlms < 0 ? 1 : numlms); lmi++)
 		for (s = t->texturechains[chain]; s; s = s->texturechains[chain])
 		{
+			if (numlms >= 0 && s->lightmaptexturenum != lms[lmi])
+				continue;
+
 			if (model != cl.worldmodel)
 			{
 				// ericw -- this is copied from R_DrawSequentialPoly.
@@ -1213,8 +1245,15 @@ void R_DrawTextureChains_Multitexture (
 		qboolean alpha_test = (t->texturechains[chain]->flags & SURF_DRAWFENCE) != 0;
 		gltexture_t *diffuse_tex = R_TextureAnimation (t, ent_frame)->gltexture;
 
+		int lms[RT_MAX_CHAIN_LIGHTMAPS];
+		int numlms = RT_ChainLightmaps (t->texturechains[chain], chain, lms, RT_MAX_CHAIN_LIGHTMAPS);
+
+		for (int lmi = 0; lmi < (numlms < 0 ? 1 : numlms); lmi++)
 		for (s = t->texturechains[chain]; s; s = s->texturechains[chain])
 		{
+			if (numlms >= 0 && s->lightmaptexturenum != lms[lmi])
+				continue;
+
 			rt_uploadsurf_state_t cur_state = {
 				.entuniqueid = entuniqueid,
 				.ent = ent,
