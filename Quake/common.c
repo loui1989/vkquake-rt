@@ -2823,6 +2823,61 @@ static size_t mz_zip_file_read_func (void *opaque, mz_uint64 ofs, void *buf, siz
 LOC_LoadFile
 ================
 */
+/*
+================
+LOC_LoadFromRereleasePak
+
+The 2026 update keeps its strings in the rerelease's id1/pak0.pak. A copy of that pak in
+<basedir>/rerelease/id1/ (where it is in a Steam / GOG install of Quake) is read just for
+them, without adding its other contents to the game.
+================
+*/
+static char *LOC_LoadFromRereleasePak (const char *file, size_t *size_out)
+{
+	static const char *const paks[] = {"rerelease/id1/pak0.pak", "rerelease/id1/PAK0.PAK"};
+	char                     path[MAX_OSPATH];
+	char                    *result = NULL;
+
+	for (int p = 0; p < (int)countof (paks) && !result; p++)
+	{
+		q_snprintf (path, sizeof (path), "%s/%s", com_basedir, paks[p]);
+		FILE *f = fopen (path, "rb");
+		if (!f)
+			continue;
+
+		int header[3]; // "PACK", directory offset, directory length
+		if (fread (header, 1, sizeof (header), f) == sizeof (header) && !memcmp (header, "PACK", 4) && header[2] > 0 &&
+		    header[2] % 64 == 0 && fseek (f, header[1], SEEK_SET) == 0)
+		{
+			for (int i = 0; i < header[2] / 64 && !result; i++)
+			{
+				struct
+				{
+					char name[56];
+					int  filepos, filelen;
+				} entry;
+				if (fread (&entry, 1, sizeof (entry), f) != sizeof (entry))
+					break;
+				entry.name[55] = 0;
+				if (q_strcasecmp (entry.name, file) || entry.filelen <= 0)
+					continue;
+
+				result = (char *)Mem_Alloc ((size_t)entry.filelen + 1);
+				if (fseek (f, entry.filepos, SEEK_SET) != 0 || fread (result, 1, entry.filelen, f) != (size_t)entry.filelen)
+				{
+					Mem_Free (result);
+					result = NULL;
+					break;
+				}
+				result[entry.filelen] = 0;
+				*size_out = (size_t)entry.filelen;
+			}
+		}
+		fclose (f);
+	}
+	return result;
+}
+
 void LOC_LoadFile (const char *file)
 {
 	char  path[1024];
@@ -2855,6 +2910,12 @@ void LOC_LoadFile (const char *file)
 	localization.text = (char *)COM_LoadFile (file, NULL);
 	if (localization.text)
 		goto loaded;
+	{
+		size_t paksize = 0;
+		localization.text = LOC_LoadFromRereleasePak (file, &paksize);
+		if (localization.text)
+			goto loaded;
+	}
 
 	q_snprintf (path, sizeof (path), "%s/%s", com_basedir, file);
 	rw = SDL_RWFromFile (path, "rb");
