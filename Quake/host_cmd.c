@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "quakedef.h"
+#include <sys/stat.h>
 #ifndef _WIN32
 #include <dirent.h>
 #else
@@ -867,6 +868,53 @@ static void Host_Randmap_f (void)
 	}
 }
 
+// respawning after death in single player loads the latest save instead of restarting the
+// level, if there is one (the quick save or a Load menu slot of the current game)
+cvar_t cl_deathload = {"cl_deathload", "1", CVAR_ARCHIVE};
+
+static qboolean Host_LatestSave (char *name, size_t namesize)
+{
+	time_t best = 0;
+	char   path[MAX_OSPATH];
+	char   slot[16];
+
+	for (int i = -1; i < 20; i++) // the quick save, then the Load menu's 20 slots
+	{
+		if (i < 0)
+			q_strlcpy (slot, "quick", sizeof (slot));
+		else
+			q_snprintf (slot, sizeof (slot), "s%i", i);
+		q_snprintf (path, sizeof (path), "%s/%s.sav", com_gamedir, slot);
+
+		struct stat st;
+		if (stat (path, &st) == 0 && st.st_mtime > best)
+		{
+			best = st.st_mtime;
+			q_strlcpy (name, slot, namesize);
+		}
+	}
+	return best != 0;
+}
+
+
+// a dead player respawning in single player: the QC reloads the level ("restart" in the
+// original game, "changelevel" to the same map in Dawn of the Machine). Load the latest save
+// instead, if there is one; true if it's being loaded
+static qboolean Host_DeathLoad (void)
+{
+	if (!cl_deathload.value || svs.maxclients != 1 || cls.state != ca_connected || cls.signon != SIGNONS || cl.intermission ||
+	    cl.stats[STAT_HEALTH] > 0)
+		return false;
+
+	char save[16];
+	if (!Host_LatestSave (save, sizeof (save)))
+		return false;
+
+	Con_Printf ("Loading the latest save (%s)\n", save);
+	Cbuf_InsertText (va ("load %s\n", save));
+	return true;
+}
+
 /*
 ==================
 Host_Changelevel_f
@@ -888,6 +936,10 @@ static void Host_Changelevel_f (void)
 		Con_Printf ("Only the server may changelevel\n");
 		return;
 	}
+
+	// respawning after death by reloading the same level
+	if (!q_strcasecmp (Cmd_Argv (1), sv.name) && Host_DeathLoad ())
+		return;
 
 	// johnfitz -- check for client having map before anything else
 	q_snprintf (level, sizeof (level), "maps/%s.bsp", Cmd_Argv (1));
@@ -923,6 +975,9 @@ static void Host_Restart_f (void)
 		return;
 
 	if (cmd_source != src_command)
+		return;
+
+	if (Host_DeathLoad ())
 		return;
 	q_strlcpy (mapname, sv.name, sizeof (mapname)); // mapname gets cleared in spawnserver
 	PR_SwitchQCVM (&sv.qcvm);
@@ -2469,6 +2524,7 @@ void Host_InitCommands (void)
 	Cmd_AddCommand ("fly", Host_Fly_f);
 	Cmd_AddCommand ("map", Host_Map_f);
 	Cmd_AddCommand ("restart", Host_Restart_f);
+	Cvar_RegisterVariable (&cl_deathload);
 	Cmd_AddCommand ("changelevel", Host_Changelevel_f);
 	Cmd_AddCommand ("connect", Host_Connect_f);
 	Cmd_AddCommand ("reconnect", Host_Reconnect_f);

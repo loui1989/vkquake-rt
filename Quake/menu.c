@@ -1027,6 +1027,7 @@ enum
 	OPT_SMOKE,
 	OPT_GUNSMOKE,
 	OPT_DECALS,
+	OPT_DEATHLOAD,
 
 	OPT_DEFAULTS,
 	OPT_CONSOLE,
@@ -1082,6 +1083,7 @@ static int GapOffset (int opt)
 	case OPT_SMOKE:
 	case OPT_GUNSMOKE:
 	case OPT_DECALS:
+	case OPT_DEATHLOAD:
 		return gapsize * 4;
 
 	case OPT_DEFAULTS:
@@ -1307,6 +1309,9 @@ void M_AdjustSliders (int dir)
 	case OPT_GUNSMOKE:
 		Cvar_SetValueQuick (&cl_gunsmoke, cl_gunsmoke.value ? 0 : 1);
 		break;
+	case OPT_DEATHLOAD:
+		Cvar_SetValueQuick (&cl_deathload, cl_deathload.value ? 0 : 1);
+		break;
 
 	case OPT_INVMOUSE: // invert mouse
 		Cvar_SetValue ("m_pitch", -m_pitch.value);
@@ -1472,6 +1477,9 @@ void M_Options_Draw (cb_context_t *cbx)
 	// OPT_DECALS:
 	M_Print (cbx, 16, GetY(OPT_DECALS), "  Bullet & scorch marks");
 	M_DrawCheckbox (cbx, 220, GetY(OPT_DECALS), cl_decals.value != 0);
+	// OPT_DEATHLOAD:
+	M_Print (cbx, 16, GetY(OPT_DEATHLOAD), " Death loads last save");
+	M_DrawCheckbox (cbx, 220, GetY(OPT_DEATHLOAD), cl_deathload.value != 0);
 	// OPT_SHOWFPS:
 	M_Print (cbx, 16, GetY(OPT_SHOWFPS), "              Show FPS");
 	M_DrawCheckbox (cbx, 220, GetY(OPT_SHOWFPS), scr_showfps.value != 0);

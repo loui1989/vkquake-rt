@@ -36,6 +36,8 @@ uint32_t      CL_Ripples_Get (RgWaterRipple *out, uint32_t max);
 
 // cl_decals.c -- bullet holes, nail marks, explosion scorch marks
 extern cvar_t cl_decals;
+// host_cmd.c -- respawning after death in single player loads the latest save
+extern cvar_t cl_deathload;
 extern cvar_t scr_showfps;
 void          CL_Decals_Init (void);
 void          CL_Decals_NewMap (void);
