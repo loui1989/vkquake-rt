@@ -1166,8 +1166,11 @@ void R_DrawTextureChains_Water (cb_context_t *cbx, qmodel_t *model, entity_t *en
 				.is_teleport = (s->flags & SURF_DRAWTELE),
 			};
 
+			// a new batch when the lightmap or the alpha changes (this compared "< 0.001", so every
+			// water surface was a separate geometry: thousands in maps with a lot of water, over
+			// RTGL1's limit, so the models drawn after them, enemies and the weapon, vanished)
 			if (cur_state.lightmap_tex != last_state.lightmap_tex ||
-				fabsf(cur_state.alpha - last_state.alpha) < 0.001f)
+				fabsf(cur_state.alpha - last_state.alpha) > 0.001f)
 			{
 				RT_FlushBatch (cbx, &last_state, &brushpasses);
 			}
