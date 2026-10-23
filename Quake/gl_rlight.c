@@ -378,6 +378,7 @@ int R_LightPoint (vec3_t p, lightcache_t *cache, vec3_t *lightcolor)
 
 
 
+extern cvar_t rt_elight_modern;
 extern cvar_t rt_elight_normaliz, rt_elight_default, rt_elight_default_mdl, rt_elight_radius, rt_elight_threshold;
 extern cvar_t rt_poi_trigger, rt_poi_func, rt_poi_weapon, rt_poi_pwrup, rt_poi_armor, rt_poi_key, rt_poi_health, rt_poi_ammo;
 extern cvar_t rt_poi_distthresh, rt_poi_distthresh_super;
@@ -952,6 +953,12 @@ void RT_UploadAllElights ()
 			// weaker light; without it these maps' many fill lights added up much too bright
 			if (map_modern && src->wait > 0.0f)
 				intens /= q_max (0.25f, src->wait * src->wait);
+
+			// and modern maps have many more lights than the original game's, placed for a
+			// lightmap: at the same strength as the original's they light dim places far
+			// brighter than the map does in the classic renderer
+			if (map_modern)
+				intens *= q_max (0.0f, CVAR_TO_FLOAT (rt_elight_modern));
 
 			if (src->state & STRUCT_STATE_FOUND_LIGHTSTYLE)
 			{
