@@ -325,6 +325,7 @@ static inline int FindFirstBitNonZero (const uint32_t mask)
 #include "menu.h"
 #include "cdaudio.h"
 #include "glquake.h"
+#include "qol.h"
 
 #include "tasks.h"
 #include "atomics.h"

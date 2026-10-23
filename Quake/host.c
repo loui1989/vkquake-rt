@@ -654,6 +654,9 @@ qboolean Host_FilterTime (float time)
 	else if (host_maxfps.value)                               // don't allow really long or short frames
 		host_frametime = CLAMP (0.0001, host_frametime, 0.1); // johnfitz -- use CLAMP
 
+	// slow motion while the weapon wheel is open (local single player)
+	host_frametime *= WHEEL_TimeScale ();
+
 	return true;
 }
 
@@ -840,6 +843,9 @@ void _Host_Frame (double time)
 	// process console commands
 	Cbuf_Execute ();
 
+	// weapon wheel: default bindings, closing, slow motion
+	WHEEL_Frame ();
+
 	NET_Poll ();
 
 	if (cl.sendprespawn)
@@ -866,6 +872,7 @@ void _Host_Frame (double time)
 				host_frametime *= host_timescale.value;
 			else if (host_framerate.value)
 				host_frametime = host_framerate.value;
+			host_frametime *= WHEEL_TimeScale ();
 		}
 
 		CL_SendCmd ();

@@ -73,7 +73,9 @@ typedef enum
 	pt_explode,
 	pt_explode2,
 	pt_blob,
-	pt_blob2
+	pt_blob2,
+	pt_splash,    // water splash droplets: full gravity
+	pt_splashring // water splash ring: spreads over the surface and slows down
 } ptype_t;
 
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!

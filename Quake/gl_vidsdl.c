@@ -1286,6 +1286,10 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 		.sourceDirection = RT_AnglesToDir (volume_light_angles),
 		.sourceAssymetry = CVAR_TO_FLOAT (rt_volume_lassymetry),
 	};
+	static RgSmokeVolume smoke_volumes[RG_MAX_SMOKE_VOLUMES];
+	volumetric_params.smokeCount = CL_Smoke_Get (smoke_volumes, RG_MAX_SMOKE_VOLUMES);
+	volumetric_params.pSmokes = smoke_volumes;
+	volumetric_params.smokeAlbedo = 0.1f;
 
 	RgDrawFrameTexturesParams texture_params = {
 		.dynamicSamplerFilter = CVAR_TO_INT32 (vid_filter) == 1 ? RG_SAMPLER_FILTER_NEAREST : RG_SAMPLER_FILTER_LINEAR,

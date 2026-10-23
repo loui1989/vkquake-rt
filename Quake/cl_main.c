@@ -745,6 +745,8 @@ void CL_RelinkEntities (void)
 
 		if (ent->forcelink || ent->lerpflags & LERP_RESETMOVE)
 			CL_ResetTrail (ent);
+		else if (!cl.paused)
+			CL_Splash_Entity (ent, oldorg);
 
 		// rotate binary objects locally
 		if (modelflags & EF_ROTATE)
@@ -1249,6 +1251,8 @@ void CL_Init (void)
 
 	CL_InitInput ();
 	CL_InitTEnts ();
+	WHEEL_Init ();
+	CL_Splash_Init ();
 
 	Cvar_RegisterVariable (&cl_name);
 	Cvar_RegisterVariable (&cl_color);

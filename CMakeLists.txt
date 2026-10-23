@@ -16,7 +16,7 @@ set(SRCS
     pr_cmds.c pr_edict.c pr_exec.c pr_ext.c r_alias.c r_brush.c r_part.c r_part_fte.c
     r_sprite.c r_world.c sbar.c snd_codec.c snd_dma.c snd_mem.c snd_mix.c snd_sdl.c snd_umx.c
     snd_wave.c snd_vorbis.c strlcat.c strlcpy.c sv_main.c sv_move.c sv_phys.c sv_user.c
-    sys_sdl_unix.c tasks.c view.c wad.c world.c crash_macos.c)
+    sys_sdl_unix.c tasks.c view.c wad.c world.c crash_macos.c cl_wheel.c cl_splash.c)
 list(TRANSFORM SRCS PREPEND "${Q}/")
 
 add_executable(vkquake ${SRCS})

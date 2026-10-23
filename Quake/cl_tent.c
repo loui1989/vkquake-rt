@@ -208,6 +208,7 @@ void CL_ParseTEnt (void)
 		pos[2] = MSG_ReadCoord (cl.protocolflags);
 		if (PScript_RunParticleEffectTypeString (pos, NULL, rnd, "TE_GUNSHOT"))
 			R_RunParticleEffect (pos, vec3_origin, 0, rnd);
+		CL_Splash_Gunshot (pos);
 		break;
 
 	case TE_EXPLOSION: // rocket explosion
@@ -216,6 +217,7 @@ void CL_ParseTEnt (void)
 		pos[2] = MSG_ReadCoord (cl.protocolflags);
 		if (PScript_RunParticleEffectTypeString (pos, NULL, 1, "TE_EXPLOSION"))
 			R_ParticleExplosion (pos);
+		CL_Smoke_Explosion (pos, 1.0f);
 		// with RT, it's controlled through explosion sprite's custom texture info
 		if (CVAR_TO_BOOL (rt_classic_render))
 		{
@@ -280,6 +282,7 @@ void CL_ParseTEnt (void)
 		colorLength = MSG_ReadByte ();
 		if (PScript_RunParticleEffectTypeString (pos, NULL, 1, va ("TE_EXPLOSION2_%i_%i", colorStart, colorLength)))
 			R_ParticleExplosion2 (pos, colorStart, colorLength);
+		CL_Smoke_Explosion (pos, 1.0f);
 		dl = CL_AllocDlight (0);
 		VectorCopy (pos, dl->origin);
 		dl->radius = 350;

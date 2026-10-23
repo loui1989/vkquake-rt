@@ -970,6 +970,10 @@ enum
 	OPT_MOUSESPEED,
 	OPT_CUSTOMIZE,
 
+	OPT_WHEEL,
+	OPT_SPLASH,
+	OPT_SMOKE,
+
 	OPT_DEFAULTS,
 	OPT_CONSOLE,
 #if !RT_RENDERER
@@ -1018,9 +1022,14 @@ static int GapOffset (int opt)
 	case OPT_CUSTOMIZE:
 		return gapsize * 3;
 
+	case OPT_WHEEL:
+	case OPT_SPLASH:
+	case OPT_SMOKE:
+		return gapsize * 4;
+
 	case OPT_DEFAULTS:
 	case OPT_CONSOLE:
-		return gapsize * 4;
+		return gapsize * 5;
 	default:
 		assert (0);
 		return 0;
@@ -1222,6 +1231,16 @@ void M_AdjustSliders (int dir)
 		break;
 #endif
 
+	case OPT_WHEEL: // weapon wheel: off / slow motion / on
+		Cvar_SetValueQuick (&cl_wheel, (CLAMP (0, CVAR_TO_INT32 (cl_wheel), 2) + (dir < 0 ? 2 : 1)) % 3);
+		break;
+	case OPT_SPLASH:
+		Cvar_SetValueQuick (&cl_watersplash, cl_watersplash.value ? 0 : 1);
+		break;
+	case OPT_SMOKE:
+		Cvar_SetValueQuick (&cl_smoke, cl_smoke.value ? 0 : 1);
+		break;
+
 	case OPT_INVMOUSE: // invert mouse
 		Cvar_SetValue ("m_pitch", -m_pitch.value);
 		break;
@@ -1371,6 +1390,16 @@ void M_Options_Draw (cb_context_t *cbx)
 		M_Print (cbx, 220, GetY(OPT_ALWAYRUN), "off");
 #endif
 
+	// OPT_WHEEL:
+	M_Print (cbx, 16, GetY(OPT_WHEEL), "          Weapon wheel");
+	M_Print (cbx, 220, GetY(OPT_WHEEL), CVAR_TO_INT32 (cl_wheel) == 1 ? "slow motion" : CVAR_TO_INT32 (cl_wheel) ? "on" : "off");
+	// OPT_SPLASH:
+	M_Print (cbx, 16, GetY(OPT_SPLASH), "        Water splashes");
+	M_DrawCheckbox (cbx, 220, GetY(OPT_SPLASH), cl_watersplash.value != 0);
+	// OPT_SMOKE:
+	M_Print (cbx, 16, GetY(OPT_SMOKE), "       Explosion smoke");
+	M_DrawCheckbox (cbx, 220, GetY(OPT_SMOKE), cl_smoke.value != 0);
+
 	// OPT_INVMOUSE:
 	M_Print (cbx, 16, GetY(OPT_INVMOUSE), "          Invert Mouse");
 	M_DrawCheckbox (cbx, 220, GetY(OPT_INVMOUSE), m_pitch.value < 0);
@@ -1495,6 +1524,7 @@ const char *bindnames[][2] = {
 	{"+attack", "attack"},
 	{"impulse 10", "next weapon"},
 	{"impulse 12", "prev weapon"},
+	{"+wheel", "weapon wheel"},
 	{"+mlook", "mouse look"},
 	{"+klook", "keyboard look"},
 	{"centerview", "center view"},

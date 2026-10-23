@@ -846,6 +846,15 @@ void CL_RunParticles (void)
 		case pt_slowgrav:
 			p->vel[2] -= grav;
 			break;
+
+		case pt_splash:
+			p->vel[2] -= frametime * sv_gravity.value;
+			break;
+
+		case pt_splashring:
+			p->vel[0] -= p->vel[0] * q_min (1.0f, 4.0f * frametime);
+			p->vel[1] -= p->vel[1] * q_min (1.0f, 4.0f * frametime);
+			break;
 		}
 	}
 }

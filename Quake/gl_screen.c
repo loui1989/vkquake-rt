@@ -1038,6 +1038,8 @@ static void SCR_DrawGUI (void *unused)
 		SCR_DrawPause (cbx);
 		SCR_CheckDrawCenterString (cbx);
 		Sbar_Draw (cbx);
+		WHEEL_Draw (cbx);
+		GL_SetCanvas (cbx, CANVAS_DEFAULT);
 		SCR_DrawDevStats (cbx); // johnfitz
 		SCR_DrawFPS (cbx);      // johnfitz
 		SCR_DrawClock (cbx);    // johnfitz

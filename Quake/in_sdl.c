@@ -222,6 +222,9 @@ extern cvar_t cl_minpitch; /* johnfitz -- variable pitch clamping */
 
 void IN_MouseMotion (int dx, int dy)
 {
+	// the weapon wheel takes the mouse while it's open
+	if (WHEEL_MouseMove (dx, dy))
+		return;
 	total_dx += dx;
 	total_dy += dy;
 }
