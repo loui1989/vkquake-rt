@@ -12,7 +12,9 @@ of the License, or (at your option) any later version.
 //   water splashes where shots and projectiles cross a liquid's surface, sized by
 //   what crossed it (cl_watersplash);
 //   volumetric smoke clouds left by explosions, rendered by RTGL1 inside the
-//   volumetric fog (cl_smoke).
+//   volumetric fog (cl_smoke);
+//   wisps of smoke from the muzzle of your gun when it fires gunpowder: shotguns,
+//   grenade and rocket launchers, not nailguns or the thunderbolt (cl_gunsmoke).
 //
 
 #include "quakedef.h"
@@ -22,6 +24,9 @@ cvar_t        cl_smoke = {"cl_smoke", "1", CVAR_ARCHIVE};
 static cvar_t cl_smoke_time = {"cl_smoke_time", "8", CVAR_ARCHIVE};       // seconds a cloud lasts
 static cvar_t cl_smoke_density = {"cl_smoke_density", "1", CVAR_ARCHIVE}; // thickness multiplier
 static cvar_t cl_smoke_size = {"cl_smoke_size", "1", CVAR_ARCHIVE};       // size multiplier
+cvar_t        cl_gunsmoke = {"cl_gunsmoke", "1", CVAR_ARCHIVE};
+static cvar_t cl_gunsmoke_density = {"cl_gunsmoke_density", "1", CVAR_ARCHIVE}; // thickness multiplier
+static cvar_t cl_gunsmoke_time = {"cl_gunsmoke_time", "1", CVAR_ARCHIVE};       // duration multiplier
 
 extern cvar_t      sv_gravity;
 extern particle_t *active_particles, *free_particles; // r_part.c
@@ -405,7 +410,148 @@ void CL_Smoke_Explosion (const vec3_t pos, float size)
 	s->used = 1;
 }
 
+/*
+=====================================================================
+Gun smoke
+=====================================================================
+*/
+
+#define MAX_PUFFS 24
+
+static uint32_t CL_Smoke_GetExplosions (RgSmokeVolume *out, uint32_t max);
+
+typedef struct
+{
+	vec3_t org, vel; // where and how fast it left the muzzle
+	double start;
+	float  r0, r1;   // radius at the start, and when it has spread out
+	float  life;     // seconds
+	float  depth;    // optical depth through the middle at the start
+	float  seed;
+	float  glow;
+	int    used;
+} puff_t;
+
+static puff_t puffs[MAX_PUFFS];
+static int    puff_next;
+
+static void CL_Smoke_Puff (const vec3_t org, const vec3_t vel, float r0, float r1, float life, float depth, float glow)
+{
+	puff_t *p = &puffs[puff_next];
+	puff_next = (puff_next + 1) % MAX_PUFFS;
+
+	VectorCopy (org, p->org);
+	VectorCopy (vel, p->vel);
+	p->start = cl.time;
+	p->r0 = r0;
+	p->r1 = r1;
+	p->life = life * CLAMP (0.25f, cl_gunsmoke_time.value, 4.0f);
+	p->depth = depth;
+	p->seed = frand () * 100.0f;
+	p->glow = glow;
+	p->used = 1;
+}
+
+void CL_Smoke_Muzzle (const vec3_t muzzle, const vec3_t forward, const vec3_t velocity, int weapon)
+{
+	int   count;
+	float r0, r1, life, depth, speed, glow;
+
+	if (!CVAR_TO_BOOL (cl_gunsmoke))
+		return;
+	if (IsLiquid (CL_Contents (muzzle)))
+		return; // no smoke underwater
+
+	switch (weapon)
+	{
+	case IT_SHOTGUN:
+		count = 2, r0 = 2.5f, r1 = 11.0f, life = 2.2f, depth = 0.45f, speed = 70.0f, glow = 0.5f;
+		break;
+	case IT_SUPER_SHOTGUN:
+		count = 3, r0 = 3.0f, r1 = 14.0f, life = 2.8f, depth = 0.6f, speed = 90.0f, glow = 0.6f;
+		break;
+	case IT_GRENADE_LAUNCHER:
+		count = 2, r0 = 3.0f, r1 = 13.0f, life = 2.6f, depth = 0.5f, speed = 50.0f, glow = 0.3f;
+		break;
+	case IT_ROCKET_LAUNCHER:
+		count = 3, r0 = 3.5f, r1 = 17.0f, life = 3.2f, depth = 0.7f, speed = 80.0f, glow = 0.7f;
+		break;
+	default:
+		return; // axe, nailguns, thunderbolt: nothing burns
+	}
+
+	for (int k = 0; k < count; k++)
+	{
+		// a short trail out of the barrel: the first wisp is pushed out the furthest
+		vec3_t org, vel;
+		for (int j = 0; j < 3; j++)
+		{
+			org[j] = muzzle[j] + forward[j] * 3.0f * k + crand () * 1.0f;
+			// carried along a bit by the shooter
+			vel[j] = forward[j] * speed * (1.0f - 0.3f * k) * (0.85f + 0.3f * frand ()) + velocity[j] * 0.5f + crand () * 6.0f;
+		}
+		CL_Smoke_Puff (org, vel, r0 * (1.0f + 0.25f * k), r1 * (0.9f + 0.2f * frand ()), life * (0.85f + 0.3f * frand ()),
+		               depth, k == 0 ? glow : 0.0f);
+	}
+}
+
+// adds the gun smoke wisps, returns their count
+static uint32_t CL_Smoke_GetPuffs (RgSmokeVolume *out, uint32_t max)
+{
+	uint32_t n = 0;
+
+	if (!CVAR_TO_BOOL (cl_gunsmoke))
+		return 0;
+
+	const float density = CLAMP (0.0f, cl_gunsmoke_density.value, 10.0f);
+
+	for (int i = 0; i < MAX_PUFFS && n < max; i++)
+	{
+		puff_t *p = &puffs[i];
+		if (!p->used)
+			continue;
+
+		const float age = (float)(cl.time - p->start);
+		if (age < 0.0f || age > p->life)
+		{
+			p->used = 0; // gone, or a new map (cl.time restarted)
+			continue;
+		}
+		const float life = age / p->life;
+
+		RgSmokeVolume *v = &out[n++];
+
+		// spreads out quickly, then slowly
+		const float spread = 1.0f - expf (-age / 0.45f);
+		v->radius = p->r0 + (p->r1 - p->r0) * spread + 3.0f * life;
+
+		// shot out of the barrel, slowed down by the air at once, then drifts up as it's warm
+		const float travel = 0.22f * (1.0f - expf (-age / 0.22f));
+		for (int j = 0; j < 3; j++)
+			v->position[j] = p->org[j] + p->vel[j] * travel;
+		v->position[2] += 7.0f * age + 1.5f * age * age;
+
+		// the same amount of smoke spread over a growing size: thinner as it grows, and fading away
+		const float fadein = CLAMP (0.0f, age / 0.06f, 1.0f);
+		const float fadeout = powf (1.0f - life, 1.4f);
+		v->density = density * p->depth * fadein * fadeout * sqrtf (p->r1 / v->radius) / v->radius;
+		v->age = age;
+		v->seed = p->seed;
+		// the muzzle flash lighting it up for an instant
+		v->glow = v->density * p->glow * expf (-age / 0.05f);
+	}
+	return n;
+}
+
 uint32_t CL_Smoke_Get (RgSmokeVolume *out, uint32_t max)
+{
+	// explosions first: they matter most if there're too many
+	uint32_t n = CL_Smoke_GetExplosions (out, max);
+	n += CL_Smoke_GetPuffs (out + n, max - n);
+	return n;
+}
+
+static uint32_t CL_Smoke_GetExplosions (RgSmokeVolume *out, uint32_t max)
 {
 	uint32_t n = 0;
 
@@ -455,6 +601,9 @@ void CL_Splash_Init (void)
 	Cvar_RegisterVariable (&cl_smoke_time);
 	Cvar_RegisterVariable (&cl_smoke_density);
 	Cvar_RegisterVariable (&cl_smoke_size);
+	Cvar_RegisterVariable (&cl_gunsmoke);
+	Cvar_RegisterVariable (&cl_gunsmoke_density);
+	Cvar_RegisterVariable (&cl_gunsmoke_time);
 
 	cl_sfx_splash = S_PrecacheSound ("misc/h2ohit1.wav");
 }

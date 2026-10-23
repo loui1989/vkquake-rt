@@ -616,6 +616,37 @@ static void CL_RocketTrail (entity_t *ent, int type)
 	VectorCopy (ent->origin, ent->trailorg);
 }
 
+/*
+===============
+CL_GunSmoke
+
+Smoke out of the muzzle of the gun in your hands, if it's one that burns gunpowder
+===============
+*/
+static void CL_GunSmoke (void)
+{
+	vec3_t muzzle, end, impact, normal;
+	int    entnum;
+
+	// the barrel's end of the view model, roughly the same for all weapons
+	VectorMA (r_origin, 26.0f, vpn, end);
+	VectorMA (end, -7.0f, vup, end);
+	VectorMA (end, 1.0f, vright, end);
+
+	// not inside a wall that the gun is pushed into
+	const float f = CL_TraceLine (r_origin, end, impact, normal, &entnum);
+	if (f < 1.0f)
+	{
+		vec3_t dir;
+		VectorSubtract (end, r_origin, dir);
+		VectorMA (r_origin, q_max (0.0f, f - 4.0f / q_max (1.0f, VectorLength (dir))), dir, muzzle);
+	}
+	else
+		VectorCopy (end, muzzle);
+
+	CL_Smoke_Muzzle (muzzle, vpn, cl.velocity, cl.stats[STAT_ACTIVEWEAPON]);
+}
+
 static void RT_OffsetFromCamera (vec3_t out_position, float offset_right, float offset_up, float offset_forward)
 {
 	// start with camera position
@@ -757,6 +788,14 @@ void CL_RelinkEntities (void)
 
 		if (ent->effects & EF_MUZZLEFLASH)
 		{
+			// gun smoke out of your own gun, once per shot (the flag stays until the next message)
+			static double last_shot_msgtime = -1;
+			if (ent == &cl.entities[cl.viewentity] && ent->msgtime != last_shot_msgtime && !cl.paused && !chase_active.value)
+			{
+				last_shot_msgtime = ent->msgtime;
+				CL_GunSmoke ();
+			}
+
 			dl = CL_AllocDlight (i);
 
 #if RT_RENDERER

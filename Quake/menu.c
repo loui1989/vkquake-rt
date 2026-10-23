@@ -974,6 +974,7 @@ enum
 	OPT_WHEEL,
 	OPT_SPLASH,
 	OPT_SMOKE,
+	OPT_GUNSMOKE,
 	OPT_DECALS,
 
 	OPT_DEFAULTS,
@@ -1003,7 +1004,7 @@ enum
 
 static int GapOffset (int opt)
 {
-	const int gapsize = 8;
+	const int gapsize = 5; // tighter than vanilla's 8 so that the extra items fit
 
 	switch (opt)
 	{		
@@ -1028,6 +1029,7 @@ static int GapOffset (int opt)
 	case OPT_WHEEL:
 	case OPT_SPLASH:
 	case OPT_SMOKE:
+	case OPT_GUNSMOKE:
 	case OPT_DECALS:
 		return gapsize * 4;
 
@@ -1042,7 +1044,7 @@ static int GapOffset (int opt)
 
 static int GetY (int opt)
 {
-	return 32 + 8 * opt + GapOffset (opt);
+	return 30 + 8 * opt + GapOffset (opt);
 }
 
 static int options_cursor;
@@ -1251,6 +1253,9 @@ void M_AdjustSliders (int dir)
 	case OPT_SMOKE:
 		Cvar_SetValueQuick (&cl_smoke, cl_smoke.value ? 0 : 1);
 		break;
+	case OPT_GUNSMOKE:
+		Cvar_SetValueQuick (&cl_gunsmoke, cl_gunsmoke.value ? 0 : 1);
+		break;
 
 	case OPT_INVMOUSE: // invert mouse
 		Cvar_SetValue ("m_pitch", -m_pitch.value);
@@ -1410,6 +1415,9 @@ void M_Options_Draw (cb_context_t *cbx)
 	// OPT_SMOKE:
 	M_Print (cbx, 16, GetY(OPT_SMOKE), "       Explosion smoke");
 	M_DrawCheckbox (cbx, 220, GetY(OPT_SMOKE), cl_smoke.value != 0);
+	// OPT_GUNSMOKE:
+	M_Print (cbx, 16, GetY(OPT_GUNSMOKE), "             Gun smoke");
+	M_DrawCheckbox (cbx, 220, GetY(OPT_GUNSMOKE), cl_gunsmoke.value != 0);
 	// OPT_DECALS:
 	M_Print (cbx, 16, GetY(OPT_DECALS), "  Bullet & scorch marks");
 	M_DrawCheckbox (cbx, 220, GetY(OPT_DECALS), cl_decals.value != 0);

@@ -21,10 +21,13 @@ void          WHEEL_Draw (cb_context_t *cbx);
 // cl_splash.c -- water splashes and explosion smoke
 extern cvar_t cl_watersplash;
 extern cvar_t cl_smoke;
+extern cvar_t cl_gunsmoke;
 void          CL_Splash_Init (void);
 void          CL_Splash_Entity (entity_t *ent, const vec3_t oldorg);
 void          CL_Splash_Gunshot (const vec3_t pos);
 void          CL_Smoke_Explosion (const vec3_t pos, float size);
+// your gun fired: smoke out of its muzzle, if it's a gun that would make any (weapon: IT_*)
+void          CL_Smoke_Muzzle (const vec3_t muzzle, const vec3_t forward, const vec3_t velocity, int weapon);
 // fills the smoke volumes for this frame, returns their count
 uint32_t      CL_Smoke_Get (RgSmokeVolume *out, uint32_t max);
 // fills the water ripples for this frame, returns their count
