@@ -160,6 +160,8 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_sky, "9") \
 	CVAR_DEF_T (rt_sky_saturation, "1") \
 	CVAR_DEF_T (rt_sky_mapcolor, "1") \
+	CVAR_DEF_T (rt_exposure, "0") \
+	CVAR_DEF_T (rt_exposure_modern, "-1") \
 	\
 	CVAR_DEF_T (rt_brush_metal, "0.0") \
 	CVAR_DEF_T (rt_brush_rough, "1.0") \
@@ -1306,6 +1308,15 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 	else
 		VectorCopy (has_skybox ? skycolor : skyflatcolor, fog_ambient);
 
+	// exposure: RTGL1's defaults, plus an offset; modern maps' dusk and night scenes are lit to be
+	// seen darker than the automatic exposure makes them (rt_exposure_modern, in stops)
+	RgDrawFrameTonemappingParams tonemapping_params = {
+		.minLogLuminance = -3.9f,
+		.maxLogLuminance = -2.8f,
+		.luminanceWhitePoint = 10.0f,
+		.exposureCompensation = CVAR_TO_FLOAT (rt_exposure) + (RT_IsMapModern () ? CVAR_TO_FLOAT (rt_exposure_modern) : 0.0f),
+	};
+
 	vec3_t volume_light_angles;
 	vec3_t volume_light_color;
 	if (CVAR_TO_BOOL (rt_sun))
@@ -1465,6 +1476,7 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 		.pBloomParams = &bloom_params,
 		.pReflectRefractParams = &refl_refr_params,
 		.pSkyParams = &sky_params,
+		.pTonemappingParams = &tonemapping_params,
 		.pTexturesParams = &texture_params,
 		.pLensFlareParams = &lens_flare_params,
 		.pLightmapParams = &lightmap_params,

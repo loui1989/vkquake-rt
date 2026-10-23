@@ -678,8 +678,18 @@ static qboolean ParseLightColor (const char *value, vec3_t out)
 	const float m = q_max (c[0], q_max (c[1], c[2]));
 	if (m <= 0.0f)
 		return false;
-	VectorScale (c, 1.0f / m, out);
+	VectorScale (c, 1.0f / m, c);
+	// the light tools apply colors to the lightmap, which is shown as is (gamma-encoded): the
+	// same color as light in the linear ray traced lighting is its linear value, otherwise it
+	// looks washed out (a warm sky light became a pale yellow)
+	for (int k = 0; k < 3; k++)
+		out[k] = powf (c[k], 2.2f);
 	return true;
+}
+
+qboolean RT_IsMapModern (void)
+{
+	return map_modern;
 }
 
 // the map's own sun, if it has one and it's not overridden by rt_sun; color includes the intensity
