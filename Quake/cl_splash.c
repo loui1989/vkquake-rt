@@ -539,6 +539,8 @@ static uint32_t CL_Smoke_GetPuffs (RgSmokeVolume *out, uint32_t max)
 		v->seed = p->seed;
 		// the muzzle flash lighting it up for an instant
 		v->glow = v->density * p->glow * expf (-age / 0.05f);
+		// light grey gunpowder smoke
+		v->albedo = 0.6f;
 	}
 	return n;
 }
@@ -590,6 +592,7 @@ static uint32_t CL_Smoke_GetExplosions (RgSmokeVolume *out, uint32_t max)
 		v->seed = s->seed;
 		// the fireball's glow in the first fraction of a second
 		v->glow = 0.06f * expf (-age / 0.12f);
+		v->albedo = 0.0f; // dark soot (the default)
 	}
 	return n;
 }
