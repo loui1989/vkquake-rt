@@ -1201,8 +1201,12 @@ void R_DrawTextureChains_Water (cb_context_t *cbx, qmodel_t *model, entity_t *en
 			// a new batch when the lightmap or the alpha changes (this compared "< 0.001", so every
 			// water surface was a separate geometry: thousands in maps with a lot of water, over
 			// RTGL1's limit, so the models drawn after them, enemies and the weapon, vanished)
+			// Teleporter surfaces stay separate: each one looks through the portal nearest to it,
+			// found from its batch's position, so a batch of all of them (e.g. the start map's
+			// skill teleporters) showed one teleporter's view in all of them.
 			if (cur_state.lightmap_tex != last_state.lightmap_tex ||
-				fabsf(cur_state.alpha - last_state.alpha) > 0.001f)
+				fabsf(cur_state.alpha - last_state.alpha) > 0.001f ||
+				cur_state.is_teleport)
 			{
 				RT_FlushBatch (cbx, &last_state, &brushpasses);
 			}
