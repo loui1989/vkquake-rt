@@ -935,6 +935,12 @@ int SCR_ModalMessage (const char *text, float timeout) // johnfitz -- timeout
 		Sys_SendKeyEvents ();
 		Key_GetGrabbedInput (&lastkey, &lastchar);
 		Sys_Sleep (16);
+
+		// keep drawing the question: with the ray tracer, a single frame drawn before
+		// waiting may never reach the screen, which looked like a frozen game
+		scr_drawdialog = true;
+		SCR_UpdateScreen (false);
+		scr_drawdialog = false;
 #ifdef __APPLE__
 		Sys_Heartbeat (); // waiting for the player, not stuck
 #endif
