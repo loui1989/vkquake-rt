@@ -16,6 +16,8 @@ of the License, or (at your option) any later version.
 
 #include "quakedef.h"
 
+extern cvar_t rt_classic_render;
+
 cvar_t        cl_decals = {"cl_decals", "1", CVAR_ARCHIVE};
 static cvar_t cl_decals_max = {"cl_decals_max", "512", CVAR_ARCHIVE};
 
@@ -236,10 +238,11 @@ static void AddDecal (const vec3_t pos, const vec3_t normal, float size, float d
 	VectorNormalize (n);
 
 	// a random rotation around the normal
+	up[0] = up[1] = up[2] = 0.0f;
 	if (fabsf (n[2]) < 0.9f)
-		VectorSet (up, 0, 0, 1);
+		up[2] = 1.0f;
 	else
-		VectorSet (up, 1, 0, 0);
+		up[0] = 1.0f;
 	CrossProduct (up, n, t);
 	VectorNormalize (t);
 	CrossProduct (n, t, b);
