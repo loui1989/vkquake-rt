@@ -120,6 +120,8 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_indir2bounces, "0") \
 	CVAR_DEF_T (rt_antifirefly, "1") \
 	CVAR_DEF_T (rt_roughmin, "0.02") \
+	CVAR_DEF_T (rt_rough_mult, "1") \
+	CVAR_DEF_T (rt_metal_add, "0") \
     \
 	CVAR_DEF_T (rt_dlight_intensity, "3.0") \
 	CVAR_DEF_T (rt_dlight_radius, "0.02") \
@@ -1358,6 +1360,9 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 		.emissionMapBoost = CVAR_TO_FLOAT (rt_emis_mapboost),
 		.emissionMaxScreenColor = CVAR_TO_FLOAT (rt_emis_maxscrcolor),
 		.minRoughness = CVAR_TO_FLOAT (rt_roughmin),
+		// every surface's roughness times this (below 1: glossier) and metallicity plus this
+		.roughnessMultiplier = CVAR_TO_FLOAT (rt_rough_mult),
+		.metallicityAdd = CVAR_TO_FLOAT (rt_metal_add),
 	};
 
 	RgDrawFrameLensFlareParams lens_flare_params = {
