@@ -204,7 +204,7 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_gi_history, "8") \
 	CVAR_DEF_T (rt_gi_reuse, "4") \
 	CVAR_DEF_T (rt_gi_radius, "8") \
-	CVAR_DEF_T (rt_gi_firefly, "64") \
+	CVAR_DEF_T (rt_gi_firefly, "16") \
 	CVAR_DEF_T (rt_reuse_jitter, "0") \
 	CVAR_DEF_T (rt_dn_dense, "1") \
 	CVAR_DEF_T (rt_dn_deflicker, "2") \
@@ -2303,10 +2303,10 @@ typedef struct
 
 static const rtq_preset_t rtq_presets[] = {
 	// no reuse of neighbours' light samples: closest to Quake II RTX, a bit more fine noise
-	{"Stable", 8, 0, 8, 64, 0, 1, 2, 1, 1, 64, 64, 0.85f},
-	{"Balanced", 8, 4, 8, 64, 0, 1, 2, 1, 1, 64, 64, 0.85f},
+	{"Stable", 8, 0, 8, 16, 0, 1, 2, 1, 1, 64, 64, 0.85f},
+	{"Balanced", 8, 4, 8, 16, 0, 1, 2, 1, 1, 64, 64, 0.85f},
 	// neighbours' samples are checked for visibility: no light leaks, costs 4 rays per pixel
-	{"Accurate", 8, 8, 8, 64, 0, 1, 2, 1, 1, 64, 64, 0.85f},
+	{"Accurate", 8, 8, 8, 16, 0, 1, 2, 1, 1, 64, 64, 0.85f},
 	// as before these settings existed
 	{"Original", 20, 4, 8, 0, 2, 0, 0, 0, 0, 256, 256, 0.95f},
 };
