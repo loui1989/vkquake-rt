@@ -87,6 +87,75 @@ static particle_t *CL_NewParticle (void)
 }
 
 /*
+=====================================================================
+Ripples: rings of waves spreading over the water's surface, rendered by RTGL1
+by bending the water's normals (so the ray traced reflections and refraction
+wobble with them)
+=====================================================================
+*/
+
+#define MAX_RIPPLES RG_MAX_WATER_RIPPLES
+
+typedef struct
+{
+	vec3_t org;
+	double start;
+	float  size;
+	int    used;
+} ripple_t;
+
+static ripple_t ripples[MAX_RIPPLES];
+static int      ripple_next;
+
+static void CL_AddRipple (const vec3_t surf, float size)
+{
+	ripple_t *r = &ripples[ripple_next];
+	ripple_next = (ripple_next + 1) % MAX_RIPPLES;
+
+	VectorCopy (surf, r->org);
+	r->start = cl.time;
+	r->size = size;
+	r->used = 1;
+}
+
+static float RippleDecay (float size)
+{
+	return 0.6f + 1.0f * sqrtf (size);
+}
+
+uint32_t CL_Ripples_Get (RgWaterRipple *out, uint32_t max)
+{
+	uint32_t n = 0;
+
+	if (!CVAR_TO_FLOAT (cl_watersplash))
+		return 0;
+
+	for (int i = 0; i < MAX_RIPPLES && n < max; i++)
+	{
+		ripple_t *r = &ripples[i];
+		if (!r->used)
+			continue;
+
+		const float age = (float)(cl.time - r->start);
+		const float decay = RippleDecay (r->size);
+		if (age < 0.0f || age > decay * 4.0f)
+		{
+			r->used = 0; // calmed down, or a new map (cl.time restarted)
+			continue;
+		}
+
+		RgWaterRipple *w = &out[n++];
+		VectorCopy (r->org, w->position);
+		w->age = age;
+		w->strength = CLAMP (0.05f, 0.08f + 0.14f * r->size, 0.5f);
+		w->wavelength = 5.0f + 4.0f * r->size;
+		w->speed = 28.0f + 14.0f * r->size;
+		w->decayTime = decay;
+	}
+	return n;
+}
+
+/*
 ===============
 CL_Splash
 
@@ -134,8 +203,14 @@ static void CL_Splash (const vec3_t surf, int liquid, float size, qboolean enter
 		p->die = cl.time + 0.35 + frand () * 0.5 * sqrtf (size);
 	}
 
-	// a ring spreading over the surface
-	const int ring = (int)(18 * size);
+	if (liquid != CONTENTS_LAVA)
+	{
+		// rings of waves on the surface
+		CL_AddRipple (surf, size);
+	}
+
+	// lava: a ring of embers spreading over the surface
+	const int ring = liquid == CONTENTS_LAVA ? (int)(18 * size) : 0;
 	for (int i = 0; i < ring; i++)
 	{
 		particle_t *p = CL_NewParticle ();
@@ -206,6 +281,26 @@ void CL_Splash_Entity (entity_t *ent, const vec3_t oldorg)
 
 	const qboolean wasLiquid = IsLiquid (CL_Contents (oldorg));
 	const qboolean isLiquid = IsLiquid (CL_Contents (ent->origin));
+
+	// wading: small ripples around the player's legs while moving in shallow water
+	if (ent == &cl.entities[cl.viewentity] && wasLiquid == isLiquid)
+	{
+		static double last_wade;
+		vec3_t        feet, waist, surf;
+		VectorCopy (ent->origin, feet);
+		feet[2] -= 22.0f;
+		VectorCopy (ent->origin, waist);
+		waist[2] += 6.0f;
+		const float hspeed = sqrtf (delta[0] * delta[0] + delta[1] * delta[1]) / q_max (0.001f, (float)(cl.time - cl.oldtime));
+		if (hspeed > 40.0f && cl.time - last_wade > 0.28 && IsLiquid (CL_Contents (feet)) && !IsLiquid (CL_Contents (waist)))
+		{
+			last_wade = cl.time;
+			const int liquid = CL_FindSurface (feet, waist, surf);
+			if (liquid != CONTENTS_LAVA)
+				CL_AddRipple (surf, CLAMP (0.3f, hspeed / 600.0f, 0.6f));
+		}
+	}
+
 	if (wasLiquid == isLiquid)
 		return;
 

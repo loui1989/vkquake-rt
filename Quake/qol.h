@@ -27,5 +27,7 @@ void          CL_Splash_Gunshot (const vec3_t pos);
 void          CL_Smoke_Explosion (const vec3_t pos, float size);
 // fills the smoke volumes for this frame, returns their count
 uint32_t      CL_Smoke_Get (RgSmokeVolume *out, uint32_t max);
+// fills the water ripples for this frame, returns their count
+uint32_t      CL_Ripples_Get (RgWaterRipple *out, uint32_t max);
 
 #endif

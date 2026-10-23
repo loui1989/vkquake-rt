@@ -1243,6 +1243,9 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 		.waterTextureAreaScale = METRIC_TO_QUAKEUNIT (CVAR_TO_FLOAT (rt_water_scale)),
 		.portalNormalTwirl = CVAR_TO_BOOL (rt_portal_twirl),
 	};
+	static RgWaterRipple water_ripples[RG_MAX_WATER_RIPPLES];
+	refl_refr_params.rippleCount = CL_Ripples_Get (water_ripples, RG_MAX_WATER_RIPPLES);
+	refl_refr_params.pRipples = water_ripples;
 	// because 1 quake unit is not 1 meter
 	refl_refr_params.waterColor.data[0] = powf (refl_refr_params.waterColor.data[0], 1.0f / METRIC_TO_QUAKEUNIT (1.0f));
 	refl_refr_params.waterColor.data[1] = powf (refl_refr_params.waterColor.data[1], 1.0f / METRIC_TO_QUAKEUNIT (1.0f));
