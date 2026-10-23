@@ -573,7 +573,9 @@ void Draw_String (cb_context_t *cbx, int x, int y, const char *str)
 	for (tmp = str; *tmp != 0; ++tmp)
 		if (*tmp != 32)
 			num_verts += 6;
-	
+	if (num_verts == 0)
+		return; // only spaces
+
 	RgVertex *vertices = RT_AllocScratchMemoryNulled (num_verts * sizeof (RgVertex));
 
 	for (i = 0; *str != 0; ++str)

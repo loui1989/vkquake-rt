@@ -5231,8 +5231,8 @@ void PF_Fixme (void)
 						bi = extensionbuiltins[i].ssqcfunc;
 					else if (qcvm == &cl.qcvm)
 						bi = extensionbuiltins[i].csqcfunc;
-					if (!bi)
-						continue;
+					if (!bi || bi == PF_Fixme)
+						continue; // a placeholder: calling it would recurse forever (e.g. Dawn of the Machine's "impulse 119")
 
 					num = extensionbuiltins[i].documentednumber;
 					if (!pr_checkextension.value || (extensionbuiltins[i].desc && !strncmp (extensionbuiltins[i].desc, "stub.", 5)))
