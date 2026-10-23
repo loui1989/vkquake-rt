@@ -160,9 +160,65 @@ Called for important messages that should stay in the center of the screen
 for a few moments
 ==============
 */
+/*
+==============
+SCR_WordWrap
+
+Copies src to dst, breaking lines longer than maxcols at the last space that fits, instead of
+in the middle of a word (the 2026 update's texts, e.g. Dawn of the Machine's, rely on it)
+==============
+*/
+static void SCR_WordWrap (char *dst, const char *src, size_t dstsize, int maxcols)
+{
+	size_t n = 0;
+
+	if (!dstsize)
+		return;
+	while (*src && n + 1 < dstsize)
+	{
+		// the next line of the source
+		const char *end = src;
+		while (*end && *end != '\n')
+			end++;
+
+		while (src < end && n + 1 < dstsize)
+		{
+			const char *brk = end;
+			const char *next = end;
+			if (end - src > maxcols)
+			{
+				// the last space within maxcols, or a hard break if the word is longer
+				brk = src + maxcols;
+				next = brk;
+				for (const char *c = src + maxcols; c > src; c--)
+					if (*c == ' ')
+					{
+						brk = c;
+						next = c + 1;
+						break;
+					}
+			}
+			while (src < brk && n + 1 < dstsize)
+				dst[n++] = *src++;
+			src = next;
+			if (src < end && n + 1 < dstsize)
+				dst[n++] = '\n';
+		}
+
+		if (*src == '\n' && n + 1 < dstsize)
+		{
+			dst[n++] = '\n';
+			src++;
+		}
+		else if (*src == '\n')
+			src++;
+	}
+	dst[n] = 0;
+}
+
 void SCR_CenterPrint (const char *str) // update centerprint data
 {
-	strncpy (scr_centerstring, str, sizeof (scr_centerstring) - 1);
+	SCR_WordWrap (scr_centerstring, str, sizeof (scr_centerstring), 40);
 	scr_centertime_off = scr_centertime.value;
 	scr_centertime_start = cl.time;
 

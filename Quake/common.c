@@ -2206,6 +2206,8 @@ static void COM_Game_f (void)
 
 		Con_Printf ("\"game\" changed to \"%s\"\n", COM_GetGameNames (true));
 
+		LOC_Init (); // a mod (or its base game) may have its own strings
+
 		VID_Lock ();
 		Cbuf_AddText ("exec quake.rc\n");
 		Cbuf_AddText ("vid_unlock\n");
@@ -2847,6 +2849,13 @@ void LOC_LoadFile (const char *file)
 	Con_Printf ("\nLanguage initialization\n");
 
 	memset (&archive, 0, sizeof (archive));
+
+	// the game directories first: since the 2026 update the strings are in the rerelease's
+	// id1/pak0.pak (QuakeEX.kpf only has a placeholder), and a mod may have its own
+	localization.text = (char *)COM_LoadFile (file, NULL);
+	if (localization.text)
+		goto loaded;
+
 	q_snprintf (path, sizeof (path), "%s/%s", com_basedir, file);
 	rw = SDL_RWFromFile (path, "rb");
 #if defined(DO_USERDIRS)
@@ -2903,6 +2912,7 @@ void LOC_LoadFile (const char *file)
 		SDL_RWclose (rw);
 	}
 
+loaded:
 	cursor = localization.text;
 
 	// skip BOM
