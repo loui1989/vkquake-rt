@@ -1996,6 +1996,15 @@ void RT_ParseTeleports (void)
 					VectorCopy (out->origin, entry->b);
 					entry->b_angle = out->angle;
 
+					// The view through the portal maps the trigger's center to the destination (plus
+					// RT_UploadAllTeleports' fixed 64 units up). The destination is where the
+					// player's origin lands, 24 units above the floor, and the trigger's center is
+					// half its height above its floor: with the fixed 64 the view was ~40 units too
+					// high, so rays started inside the wall above the doorway on the other side and
+					// parts of the view showed the sky. Line the floors up instead. (Hand-placed
+					// outputs from world_custom_portals.txt replace this.)
+					entry->b[2] += (entry->a[2] - mod->mins[2]) - 24.0f - 64.0f;
+
 
 					entry->potentially_mirror = false;
 				}
