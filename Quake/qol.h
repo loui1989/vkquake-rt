@@ -28,6 +28,7 @@ void          CL_Splash_Gunshot (const vec3_t pos);
 void          CL_Smoke_Explosion (const vec3_t pos, float size);
 // your gun fired: smoke out of its muzzle, if it's a gun that would make any (weapon: IT_*)
 void          CL_Smoke_Muzzle (const vec3_t muzzle, const vec3_t forward, const vec3_t velocity, int weapon);
+extern qboolean cl_gunsmoke_pending; // your own gun fired (set when parsing, used in CL_RelinkEntities)
 // fills the smoke volumes for this frame, returns their count
 uint32_t      CL_Smoke_Get (RgSmokeVolume *out, uint32_t max);
 // fills the water ripples for this frame, returns their count

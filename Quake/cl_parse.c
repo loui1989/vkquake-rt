@@ -495,6 +495,9 @@ static void CL_EntitiesDeltaed (void)
 				R_TranslateNewPlayerSkin (newnum - 1); // johnfitz -- was R_TranslatePlayerSkin
 		}
 		ent->effects = ent->netstate.effects;
+		// a shot of your own gun: noted here, as several messages can arrive in one frame
+		if (newnum == cl.viewentity && (ent->effects & EF_MUZZLEFLASH))
+			cl_gunsmoke_pending = true;
 
 		// johnfitz -- lerping for movetype_step entities
 		if (ent->netstate.eflags & EFLAGS_STEP)
@@ -1152,6 +1155,8 @@ static void CL_ParseUpdate (int bits)
 		ent->effects = MSG_ReadByte ();
 	else
 		ent->effects = ent->baseline.effects;
+	if (num == cl.viewentity && (ent->effects & EF_MUZZLEFLASH))
+		cl_gunsmoke_pending = true;
 
 	// shift the known values for interpolation
 	VectorCopy (ent->msg_origins[0], ent->msg_origins[1]);

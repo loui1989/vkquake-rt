@@ -623,6 +623,8 @@ CL_GunSmoke
 Smoke out of the muzzle of the gun in your hands, if it's one that burns gunpowder
 ===============
 */
+qboolean cl_gunsmoke_pending; // set by the parser when your own gun fired
+
 static void CL_GunSmoke (void)
 {
 	vec3_t muzzle, end, impact, normal;
@@ -699,6 +701,14 @@ void CL_RelinkEntities (void)
 
 	// determine partial update time
 	frac = CL_LerpPoint ();
+
+	// smoke out of your own gun, once per shot
+	if (cl_gunsmoke_pending)
+	{
+		cl_gunsmoke_pending = false;
+		if (!cl.paused && !chase_active.value && cl.worldmodel)
+			CL_GunSmoke ();
+	}
 
 	frametime = cl.time - cl.oldtime;
 	if (frametime < 0)
@@ -788,14 +798,6 @@ void CL_RelinkEntities (void)
 
 		if (ent->effects & EF_MUZZLEFLASH)
 		{
-			// gun smoke out of your own gun, once per shot (the flag stays until the next message)
-			static double last_shot_msgtime = -1;
-			if (ent == &cl.entities[cl.viewentity] && ent->msgtime != last_shot_msgtime && !cl.paused && !chase_active.value)
-			{
-				last_shot_msgtime = ent->msgtime;
-				CL_GunSmoke ();
-			}
-
 			dl = CL_AllocDlight (i);
 
 #if RT_RENDERER

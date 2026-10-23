@@ -465,16 +465,16 @@ void CL_Smoke_Muzzle (const vec3_t muzzle, const vec3_t forward, const vec3_t ve
 	switch (weapon)
 	{
 	case IT_SHOTGUN:
-		count = 2, r0 = 2.5f, r1 = 11.0f, life = 2.2f, depth = 0.45f, speed = 70.0f, glow = 0.5f;
+		count = 2, r0 = 3.5f, r1 = 11.0f, life = 2.2f, depth = 0.45f, speed = 70.0f, glow = 0.5f;
 		break;
 	case IT_SUPER_SHOTGUN:
-		count = 3, r0 = 3.0f, r1 = 14.0f, life = 2.8f, depth = 0.6f, speed = 90.0f, glow = 0.6f;
+		count = 3, r0 = 4.0f, r1 = 14.0f, life = 2.8f, depth = 0.6f, speed = 90.0f, glow = 0.6f;
 		break;
 	case IT_GRENADE_LAUNCHER:
-		count = 2, r0 = 3.0f, r1 = 13.0f, life = 2.6f, depth = 0.5f, speed = 50.0f, glow = 0.3f;
+		count = 2, r0 = 4.0f, r1 = 13.0f, life = 2.6f, depth = 0.5f, speed = 50.0f, glow = 0.3f;
 		break;
 	case IT_ROCKET_LAUNCHER:
-		count = 3, r0 = 3.5f, r1 = 17.0f, life = 3.2f, depth = 0.7f, speed = 80.0f, glow = 0.7f;
+		count = 3, r0 = 4.5f, r1 = 17.0f, life = 3.2f, depth = 0.7f, speed = 80.0f, glow = 0.7f;
 		break;
 	default:
 		return; // axe, nailguns, thunderbolt: nothing burns
