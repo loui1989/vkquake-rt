@@ -1829,6 +1829,12 @@ void CL_ParseServerMessage (void)
 			break;
 
 		case svc_serverinfo:
+			// the server info always starts a new signon sequence: reset it here, as "reconnect"
+			// does. The local server's "reconnect" can reach the client after the new level's
+			// first signon message (it goes through the command buffer), and a level restarted
+			// twice in quick succession (dying and respawning, the QC and a key press both
+			// restarting) then got "Received signon 1 when at 1" and dropped to the console
+			cls.signon = 0;
 			CL_ParseServerInfo ();
 			vid.recalc_refdef = true; // leave intermission full screen
 			break;
