@@ -641,6 +641,7 @@ typedef struct rt_elight_s
 	int      lightstyle;
 	qboolean is_around_poi;
 	vec3_t   color; // "_color", if STRUCT_STATE_FOUND_COLOR
+	float    wait;  // "wait": how much faster the light fades with distance (0 - not set, 1)
 } rt_elight_t;
 
 // the sun that modern maps define in worldspawn (ericw-tools' "_sunlight", "_sun_mangle",
@@ -873,6 +874,10 @@ void RT_ParseElights ()
 				struct_values.state |= STRUCT_STATE_FOUND_INTENSITY;
 			}
 		}
+		else if (strcmp (key, "wait") == 0)
+		{
+			struct_values.wait = q_max (0.0f, strtof (value, NULL));
+		}
 		else if (strcmp (key, "style") == 0)
 		{
 			int tmpval = strtol (value, NULL, 10);
@@ -939,6 +944,14 @@ void RT_UploadAllElights ()
 		if (accept)
 		{
 			float intens = quake_intensity / CVAR_TO_FLOAT (rt_elight_normaliz);
+
+			// modern light tools scale the distance by "wait": wait 2 fades twice as fast, which
+			// for inverse-square falloff is a quarter of the light at any distance (and for the
+			// linear falloff, half the reach: about a quarter of the light overall). The ray traced
+			// light always falls off with the square of the distance, so it takes that as a
+			// weaker light; without it these maps' many fill lights added up much too bright
+			if (map_modern && src->wait > 0.0f)
+				intens /= q_max (0.25f, src->wait * src->wait);
 
 			if (src->state & STRUCT_STATE_FOUND_LIGHTSTYLE)
 			{
