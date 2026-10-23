@@ -427,12 +427,45 @@ int load_cursor; // 0 < load_cursor < MAX_SAVEGAMES
 char m_filenames[MAX_SAVEGAMES][SAVEGAME_COMMENT_LENGTH + 1];
 int  loadable[MAX_SAVEGAMES];
 
+// the quick save (F6, "save quick"): first in the load menu
+static char     m_quickname[SAVEGAME_COMMENT_LENGTH + 1];
+static qboolean quick_loadable;
+static int      loadmenu_cursor; // 0 - the quick save, 1.. - the slots
+
+// reads a save's comment (level name, kills, time); false if it's not there
+static qboolean M_ReadSaveComment (const char *file, char *out)
+{
+	char  name[MAX_OSPATH];
+	int   version;
+	FILE *f;
+
+	q_snprintf (name, sizeof (name), "%s/%s", com_gamedir, file);
+	f = fopen (name, "r");
+	if (!f)
+		return false;
+	if (fscanf (f, "%i\n", &version) != 1 || fscanf (f, "%79s\n", name) != 1)
+	{
+		fclose (f);
+		return false;
+	}
+	fclose (f);
+	q_strlcpy (out, name, SAVEGAME_COMMENT_LENGTH + 1);
+	for (int j = 0; out[j]; j++)
+		if (out[j] == '_')
+			out[j] = ' '; // change _ back to space
+	return true;
+}
+
 void M_ScanSaves (void)
 {
 	int   i, j;
 	char  name[MAX_OSPATH];
 	FILE *f;
 	int   version;
+
+	quick_loadable = M_ReadSaveComment ("quick.sav", m_quickname);
+	if (!quick_loadable)
+		strcpy (m_quickname, "--- NO QUICK SAVE ---");
 
 	for (i = 0; i < MAX_SAVEGAMES; i++)
 	{
@@ -493,11 +526,23 @@ void M_Load_Draw (cb_context_t *cbx)
 	p = Draw_CachePic ("gfx/p_load.lmp");
 	M_DrawPic (cbx, (320 - p->width) / 2, 4, p);
 
+	// the quick save first, in white, then the slots
+	if (quick_loadable && strlen (m_quickname) >= 22)
+	{
+		// "Quick: " + the level name (shortened) + the kills, in the same width as the slots
+		char line[SAVEGAME_COMMENT_LENGTH + 8];
+		q_snprintf (line, sizeof (line), "Quick: %.15s%s", m_quickname, m_quickname + 22);
+		M_PrintWhite (cbx, 16, 32, line);
+	}
+	else if (quick_loadable)
+		M_PrintWhite (cbx, 16, 32, va ("Quick: %s", m_quickname));
+	else
+		M_Print (cbx, 16, 32, m_quickname);
 	for (i = 0; i < MAX_SAVEGAMES; i++)
-		M_Print (cbx, 16, 32 + 8 * i, m_filenames[i]);
+		M_Print (cbx, 16, 40 + 8 * i, m_filenames[i]);
 
 	// line cursor
-	M_DrawCharacter (cbx, 8, 32 + load_cursor * 8, 12 + ((int)(realtime * 4) & 1));
+	M_DrawCharacter (cbx, 8, 32 + loadmenu_cursor * 8, 12 + ((int)(realtime * 4) & 1));
 }
 
 void M_Save_Draw (cb_context_t *cbx)
@@ -528,7 +573,7 @@ void M_Load_Key (int k)
 	case K_KP_ENTER:
 	case K_ABUTTON:
 		S_LocalSound ("misc/menu2.wav");
-		if (!loadable[load_cursor])
+		if (loadmenu_cursor == 0 ? !quick_loadable : !loadable[loadmenu_cursor - 1])
 			return;
 		m_state = m_none;
 		IN_Activate ();
@@ -539,23 +584,29 @@ void M_Load_Key (int k)
 		SCR_BeginLoadingPlaque ();
 
 		// issue the load command
-		Cbuf_AddText (va ("load s%i\n", load_cursor));
+		if (loadmenu_cursor == 0)
+			Cbuf_AddText ("load quick\n");
+		else
+		{
+			load_cursor = loadmenu_cursor - 1; // the save menu starts at the same slot
+			Cbuf_AddText (va ("load s%i\n", load_cursor));
+		}
 		return;
 
 	case K_UPARROW:
 	case K_LEFTARROW:
 		S_LocalSound ("misc/menu1.wav");
-		load_cursor--;
-		if (load_cursor < 0)
-			load_cursor = MAX_SAVEGAMES - 1;
+		loadmenu_cursor--;
+		if (loadmenu_cursor < 0)
+			loadmenu_cursor = MAX_SAVEGAMES;
 		break;
 
 	case K_DOWNARROW:
 	case K_RIGHTARROW:
 		S_LocalSound ("misc/menu1.wav");
-		load_cursor++;
-		if (load_cursor >= MAX_SAVEGAMES)
-			load_cursor = 0;
+		loadmenu_cursor++;
+		if (loadmenu_cursor > MAX_SAVEGAMES)
+			loadmenu_cursor = 0;
 		break;
 	}
 }
