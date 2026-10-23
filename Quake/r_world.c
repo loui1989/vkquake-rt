@@ -1954,6 +1954,22 @@ static void LoadCustomTeleportInfoAndPatch ()
 
 #define RG_MAX_PORTALS 62
 
+// the height of the floor under a point (the first solid within 256 units down; the point's
+// own height minus 24 if none)
+static float RT_FloorUnder (const vec3_t p)
+{
+	vec3_t q = {p[0], p[1], p[2]};
+	if (Mod_PointInLeaf (q, cl.worldmodel)->contents == CONTENTS_SOLID)
+		return p[2] - 24.0f;
+	for (int i = 0; i < 256; i++)
+	{
+		q[2] = p[2] - (float)i;
+		if (Mod_PointInLeaf (q, cl.worldmodel)->contents == CONTENTS_SOLID)
+			return q[2] + 1.0f;
+	}
+	return p[2] - 24.0f;
+}
+
 void RT_ParseTeleports (void)
 {
 	rt_teleports_count = 0;
@@ -1997,13 +2013,13 @@ void RT_ParseTeleports (void)
 					entry->b_angle = out->angle;
 
 					// The view through the portal maps the trigger's center to the destination (plus
-					// RT_UploadAllTeleports' fixed 64 units up). The destination is where the
-					// player's origin lands, 24 units above the floor, and the trigger's center is
-					// half its height above its floor: with the fixed 64 the view was ~40 units too
-					// high, so rays started inside the wall above the doorway on the other side and
-					// parts of the view showed the sky. Line the floors up instead. (Hand-placed
-					// outputs from world_custom_portals.txt replace this.)
-					entry->b[2] += (entry->a[2] - mod->mins[2]) - 24.0f - 64.0f;
+					// RT_UploadAllTeleports' fixed 64 units up), which put it at the wrong height:
+					// rays started inside the wall above the doorway, or under the floor, on the
+					// other side, and the sky showed through. Line the floors up instead: the
+					// floor under the trigger (its box doesn't always reach the floor) with the
+					// floor under the destination.
+					// (Hand-placed outputs from world_custom_portals.txt replace this.)
+					entry->b[2] = RT_FloorUnder (out->origin) + (entry->a[2] - RT_FloorUnder (entry->a)) - 64.0f;
 
 
 					entry->potentially_mirror = false;
