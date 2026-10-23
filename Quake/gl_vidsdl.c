@@ -131,7 +131,7 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_wlight_radius, "0.01") \
 	\
 	CVAR_DEF_T (rt_elight_normaliz, "100") \
-	CVAR_DEF_T (rt_elight_modern, "0.25") \
+	CVAR_DEF_T (rt_elight_modern, "0.5") \
 	CVAR_DEF_T (rt_elight_default, "200") \
 	CVAR_DEF_T (rt_elight_default_mdl, "1000") \
 	CVAR_DEF_T (rt_elight_threshold, "-1") \
