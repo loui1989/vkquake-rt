@@ -373,6 +373,7 @@ void R_ParseParticleEffect (void)
 		// an explosion sent as particles (exploding barrels): leaves smoke too
 		vec3_t smokeorg = {org[0], org[1], org[2] + 16.0f};
 		CL_Smoke_Explosion (smokeorg, 1.2f);
+		CL_Decal_Impact (org, 2);
 	}
 	else
 		count = msgcount;

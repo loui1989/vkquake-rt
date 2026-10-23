@@ -400,6 +400,7 @@ void R_NewMap (void)
 	PScript_ClearParticles ();
 #endif
 	GL_DeleteBModelVertexBuffer ();
+	CL_Decals_NewMap (); // after the wait for the renderer above
 
 	GL_BuildLightmaps ();
 	GL_BuildBModelVertexBuffer ();

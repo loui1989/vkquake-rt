@@ -30,4 +30,12 @@ uint32_t      CL_Smoke_Get (RgSmokeVolume *out, uint32_t max);
 // fills the water ripples for this frame, returns their count
 uint32_t      CL_Ripples_Get (RgWaterRipple *out, uint32_t max);
 
+// cl_decals.c -- bullet holes, nail marks, explosion scorch marks
+extern cvar_t cl_decals;
+extern cvar_t scr_showfps;
+void          CL_Decals_Init (void);
+void          CL_Decals_NewMap (void);
+void          CL_Decals_Upload (void);
+void          CL_Decal_Impact (const vec3_t pos, int kind); // 0 bullet, 1 nail, 2 scorch
+
 #endif

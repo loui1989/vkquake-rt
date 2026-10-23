@@ -80,7 +80,8 @@ cvar_t loadas8bit = {"loadas8bit", "0", CVAR_NONE};
 cvar_t sndspeed = {"sndspeed", "11025", CVAR_NONE};
 cvar_t snd_mixspeed = {"snd_mixspeed", "44100", CVAR_NONE};
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__APPLE__)
+// macOS: the best filter too, the cheap one leaves 11 kHz sounds harsh / metallic
 #define SND_FILTERQUALITY_DEFAULT "5"
 #else
 #define SND_FILTERQUALITY_DEFAULT "1"

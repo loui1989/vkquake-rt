@@ -1253,6 +1253,7 @@ void CL_Init (void)
 	CL_InitTEnts ();
 	WHEEL_Init ();
 	CL_Splash_Init ();
+	CL_Decals_Init ();
 
 	Cvar_RegisterVariable (&cl_name);
 	Cvar_RegisterVariable (&cl_color);

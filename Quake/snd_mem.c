@@ -37,6 +37,7 @@ static void ResampleSfx (sfx_t *sfx, int inrate, int inwidth, byte *data)
 	int         i;
 	int         sample, samplefrac, fracstep;
 	sfxcache_t *sc = sfx->cache;
+	const int   incount = sc->length;
 
 	stepscale = (float)inrate / shm->speed; // this is usually 0.5, 1, or 2
 
@@ -48,6 +49,8 @@ static void ResampleSfx (sfx_t *sfx, int inrate, int inwidth, byte *data)
 	sc->speed = shm->speed;
 	if (loadas8bit.value)
 		sc->width = 1;
+	else if (stepscale < 1.0f)
+		sc->width = 2; // interpolated: keep the in-between values (S_LoadSound allocates for it)
 	else
 		sc->width = inwidth;
 	sc->stereo = 0;
@@ -59,6 +62,36 @@ static void ResampleSfx (sfx_t *sfx, int inrate, int inwidth, byte *data)
 		// fast special case
 		for (i = 0; i < outcount; i++)
 			((signed char *)sc->data)[i] = (int)((unsigned char)(data[i]) - 128);
+	}
+	else if (stepscale < 1.0f && incount > 0)
+	{
+		// upsampling (Quake's 11 kHz sounds to 44.1 kHz): interpolate between the samples
+		// instead of repeating them, which adds harsh, metallic overtones to high sounds
+		for (i = 0; i < outcount; i++)
+		{
+			const float pos = i * stepscale;
+			int         s0 = (int)pos;
+			if (s0 > incount - 1)
+				s0 = incount - 1;
+			const int   s1 = s0 + 1 < incount ? s0 + 1 : s0;
+			const float frac = pos - (float)s0;
+			int         a, b;
+			if (inwidth == 2)
+			{
+				a = LittleShort (((short *)data)[s0]);
+				b = LittleShort (((short *)data)[s1]);
+			}
+			else
+			{
+				a = (int)((unsigned char)(data[s0]) - 128) << 8;
+				b = (int)((unsigned char)(data[s1]) - 128) << 8;
+			}
+			sample = a + (int)((b - a) * frac);
+			if (sc->width == 2)
+				((short *)sc->data)[i] = sample;
+			else
+				((signed char *)sc->data)[i] = sample >> 8;
+		}
 	}
 	else
 	{
@@ -138,7 +171,8 @@ sfxcache_t *S_LoadSound (sfx_t *s)
 	stepscale = (float)info.rate / shm->speed;
 	len = info.samples / stepscale;
 
-	len = len * info.width * info.channels;
+	// upsampled sounds are interpolated into 16 bits (ResampleSfx)
+	len = len * ((stepscale < 1.0f && !loadas8bit.value) ? 2 : info.width) * info.channels;
 
 	if (info.samples == 0 || len == 0)
 	{

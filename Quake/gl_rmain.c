@@ -516,6 +516,7 @@ void R_SetupViewBeforeMark (void *unused)
 	// johnfitz
 
 	RT_UploadAllDlights ();
+	CL_Decals_Upload ();
 }
 
 //==============================================================================

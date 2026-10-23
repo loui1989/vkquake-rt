@@ -959,6 +959,7 @@ enum
 {
     OPT_SCRSIZE = 0,
 	OPT_CROSSHAIR,
+	OPT_SHOWFPS,
 	OPT_SCALE,
 
 	OPT_VIDEO, // RT: OPT_VIDEO must've been at the end, let's hope nothing breaks
@@ -973,6 +974,7 @@ enum
 	OPT_WHEEL,
 	OPT_SPLASH,
 	OPT_SMOKE,
+	OPT_DECALS,
 
 	OPT_DEFAULTS,
 	OPT_CONSOLE,
@@ -1007,6 +1009,7 @@ static int GapOffset (int opt)
 	{		
 	case OPT_SCRSIZE:
 	case OPT_CROSSHAIR:
+	case OPT_SHOWFPS:
 	case OPT_SCALE:
 		return gapsize * 0;
 
@@ -1025,6 +1028,7 @@ static int GapOffset (int opt)
 	case OPT_WHEEL:
 	case OPT_SPLASH:
 	case OPT_SMOKE:
+	case OPT_DECALS:
 		return gapsize * 4;
 
 	case OPT_DEFAULTS:
@@ -1231,6 +1235,13 @@ void M_AdjustSliders (int dir)
 		break;
 #endif
 
+	case OPT_SHOWFPS:
+		Cvar_SetValueQuick (&scr_showfps, scr_showfps.value ? 0 : 1);
+		break;
+	case OPT_DECALS:
+		Cvar_SetValueQuick (&cl_decals, cl_decals.value ? 0 : 1);
+		break;
+
 	case OPT_WHEEL: // weapon wheel: off / slow motion / on
 		Cvar_SetValueQuick (&cl_wheel, (CLAMP (0, CVAR_TO_INT32 (cl_wheel), 2) + (dir < 0 ? 2 : 1)) % 3);
 		break;
@@ -1399,6 +1410,12 @@ void M_Options_Draw (cb_context_t *cbx)
 	// OPT_SMOKE:
 	M_Print (cbx, 16, GetY(OPT_SMOKE), "       Explosion smoke");
 	M_DrawCheckbox (cbx, 220, GetY(OPT_SMOKE), cl_smoke.value != 0);
+	// OPT_DECALS:
+	M_Print (cbx, 16, GetY(OPT_DECALS), "  Bullet & scorch marks");
+	M_DrawCheckbox (cbx, 220, GetY(OPT_DECALS), cl_decals.value != 0);
+	// OPT_SHOWFPS:
+	M_Print (cbx, 16, GetY(OPT_SHOWFPS), "              Show FPS");
+	M_DrawCheckbox (cbx, 220, GetY(OPT_SHOWFPS), scr_showfps.value != 0);
 
 	// OPT_INVMOUSE:
 	M_Print (cbx, 16, GetY(OPT_INVMOUSE), "          Invert Mouse");
