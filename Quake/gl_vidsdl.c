@@ -202,16 +202,16 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_sensit_spec, "0.03") \
 	\
 	CVAR_DEF_T (rt_gi_history, "8") \
-	CVAR_DEF_T (rt_gi_reuse, "4") \
-	CVAR_DEF_T (rt_gi_radius, "8") \
-	CVAR_DEF_T (rt_gi_firefly, "16") \
+	CVAR_DEF_T (rt_gi_reuse, "8") \
+	CVAR_DEF_T (rt_gi_radius, "32") \
+	CVAR_DEF_T (rt_gi_firefly, "4") \
 	CVAR_DEF_T (rt_reuse_jitter, "0") \
-	CVAR_DEF_T (rt_dn_dense, "1") \
-	CVAR_DEF_T (rt_dn_deflicker, "2") \
+	CVAR_DEF_T (rt_dn_dense, "0") \
+	CVAR_DEF_T (rt_dn_deflicker, "8") \
 	CVAR_DEF_T (rt_bluenoise, "1") \
 	CVAR_DEF_T (rt_antilag_sq, "1") \
-	CVAR_DEF_T (rt_dn_history, "64") \
-	CVAR_DEF_T (rt_dn_spechistory, "64") \
+	CVAR_DEF_T (rt_dn_history, "256") \
+	CVAR_DEF_T (rt_dn_spechistory, "256") \
 	CVAR_DEF_T (rt_fog_history, "0.85") \
 	CVAR_DEF_T (rt_viewer, "1") \
 	\
@@ -2311,7 +2311,8 @@ typedef struct
 static const rtq_preset_t rtq_presets[] = {
 	// no reuse of neighbours' light samples: closest to Quake II RTX, a bit more fine noise
 	{"Stable", 8, 0, 8, 16, 0, 1, 2, 1, 1, 64, 64, 0.85f},
-	{"Balanced", 8, 4, 8, 16, 0, 1, 2, 1, 1, 64, 64, 0.85f},
+	// the default: visibility-checked neighbours' samples over a wide radius, long history
+	{"Balanced", 8, 8, 32, 4, 0, 0, 8, 1, 1, 256, 256, 0.85f},
 	// neighbours' samples are checked for visibility: no light leaks, costs 4 rays per pixel
 	{"Accurate", 8, 8, 8, 16, 0, 1, 2, 1, 1, 64, 64, 0.85f},
 	// as before these settings existed
