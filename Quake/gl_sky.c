@@ -41,6 +41,17 @@ float                  skymins[2][6], skymaxs[2][6];
 #endif
 
 char skybox_name[1024]; // name of current skybox, or "" if no skybox
+// average color of the current skybox's sides and top (as skyflatcolor is for the old sky)
+static float    skybox_flatcolor[3];
+static qboolean skybox_flatcolor_valid;
+
+qboolean Sky_GetSkyBoxColor (vec3_t color)
+{
+	if (!skybox_name[0] || !skybox_flatcolor_valid)
+		return false;
+	VectorCopy (skybox_flatcolor, color);
+	return true;
+}
 
 gltexture_t *skybox_textures[6];
 gltexture_t *solidskytexture, *alphaskytexture;
@@ -276,12 +287,17 @@ void        Sky_LoadSkyBox (const char *name)
 		skybox_textures[i] = NULL;
 	}
 
+	skybox_flatcolor_valid = false;
+
 	// turn off skybox if sky is set to ""
 	if (name[0] == 0)
 	{
 		skybox_name[0] = 0;
 		return;
 	}
+
+	double sum[3] = {0, 0, 0};
+	double sumcount = 0;
 
 	// load textures
 	for (i = 0; i < 6; i++)
@@ -290,6 +306,17 @@ void        Sky_LoadSkyBox (const char *name)
 		data = Image_LoadImage (filename, &width, &height);
 		if (data)
 		{
+			if (i != 5) // not the bottom, which casts no light
+			{
+				const int count = width * height;
+				for (int k = 0; k < count; k += 7)
+				{
+					sum[0] += data[k * 4 + 0];
+					sum[1] += data[k * 4 + 1];
+					sum[2] += data[k * 4 + 2];
+					sumcount += 1;
+				}
+			}
 			skybox_textures[i] = TexMgr_LoadImage (filename, cl.worldmodel, filename, width, height, SRC_RGBA, data, filename, 0, TEXPREF_NONE);
 			nonefound = false;
 			Mem_Free (data);
@@ -311,6 +338,13 @@ void        Sky_LoadSkyBox (const char *name)
 		}
 		skybox_name[0] = 0;
 		return;
+	}
+
+	if (sumcount > 0)
+	{
+		for (i = 0; i < 3; i++)
+			skybox_flatcolor[i] = (float)(sum[i] / (sumcount * 255.0));
+		skybox_flatcolor_valid = true;
 	}
 
 	q_strlcpy (skybox_name, name, sizeof (skybox_name));

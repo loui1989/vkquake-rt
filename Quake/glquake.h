@@ -367,6 +367,8 @@ int R_LightPoint (vec3_t p, lightcache_t *cache, vec3_t *lightcolor);
 void RT_ParseElights (void);
 void RT_UploadAllElights (void);
 qboolean RT_GetMapSun (vec3_t angles, vec3_t color); // the map's own sun, if not overridden by rt_sun
+qboolean RT_GetMapSkyLightColor (vec3_t color);      // the map's sky light color ("_sunlight2_color"), if it has one
+qboolean Sky_GetSkyBoxColor (vec3_t color);          // average color of the current skybox, if there is one
 
 void GL_SubdivideSurface (msurface_t *fa);
 void R_BuildLightMap (msurface_t *surf, byte *dest, int stride);

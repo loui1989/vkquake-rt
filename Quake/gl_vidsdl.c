@@ -159,6 +159,7 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	\
 	CVAR_DEF_T (rt_sky, "9") \
 	CVAR_DEF_T (rt_sky_saturation, "1") \
+	CVAR_DEF_T (rt_sky_mapcolor, "1") \
 	\
 	CVAR_DEF_T (rt_brush_metal, "0.0") \
 	CVAR_DEF_T (rt_brush_rough, "1.0") \
@@ -1256,16 +1257,54 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 	refl_refr_params.acidColor.data[2] = powf (refl_refr_params.acidColor.data[2], 1.0f / METRIC_TO_QUAKEUNIT (1.0f));
 
 
-	float skyMult = 1.0f / CLAMP (0.02f, RT_Luminance (skyflatcolor), 1.0f);
+	// the sky's light is scaled to the same brightness whatever the sky's picture: measured on the
+	// skybox when there is one (the old scrolling sky texture is often unrelated to it, e.g. the
+	// original game's purple sky under a modern map's sunset skybox)
+	vec3_t skycolor;
+	const qboolean has_skybox = Sky_GetSkyBoxColor (skycolor);
+	if (!has_skybox)
+		VectorCopy (skyflatcolor, skycolor);
+
+	float skyMult = 1.0f / CLAMP (0.02f, RT_Luminance (skycolor), 1.0f);
 	skyMult *= CVAR_TO_FLOAT (rt_sky);
+
+	// modern maps give the sky's light a color for their light tools ("_sunlight2_color"): the ray
+	// traced sky light takes it (rt_sky_mapcolor 1) instead of the skybox's own color, which can be
+	// far more saturated (a sunset's deep orange on every surface); the brightness in each
+	// direction still comes from the skybox
+	vec3_t skylight_color = {0, 0, 0}; // 0 - the sky's own color
+	float  sky_saturation = CVAR_TO_FLOAT (rt_sky_saturation);
+	const float mapcolor = CLAMP (0.0f, CVAR_TO_FLOAT (rt_sky_mapcolor), 1.0f);
+	if (mapcolor > 0.0f && RT_GetMapSkyLightColor (skylight_color))
+		sky_saturation *= 1.0f - mapcolor;
+	else
+		skylight_color[0] = skylight_color[1] = skylight_color[2] = 0.0f;
 
 	RgDrawFrameSkyParams sky_params = {
 		.skyType = CVAR_TO_BOOL (r_fastsky) ? RG_SKY_TYPE_COLOR : RG_SKY_TYPE_RASTERIZED_GEOMETRY,
 		.skyColorDefault = RT_VEC3 (skyflatcolor),
 		.skyColorMultiplier = skyMult,
-		.skyColorSaturation = CVAR_TO_FLOAT (rt_sky_saturation),
+		.skyColorSaturation = sky_saturation,
 		.skyViewerPosition = RT_VEC3 (r_origin),
+		.skyLightColor = RT_VEC3 (skylight_color),
 	};
+
+	// the fog's ambient light: the map's own fog color if it sets one (as the classic renderer
+	// shows it), otherwise the sky's
+	vec3_t fog_ambient;
+	if (Fog_GetDensity () > 0.0f && mapcolor > 0.0f)
+	{
+		Fog_GetColor (fog_ambient);
+		for (int k = 0; k < 3; k++)
+			fog_ambient[k] = CLAMP (0.0f, fog_ambient[k], 1.0f);
+	}
+	else if (has_skybox && skylight_color[0] + skylight_color[1] + skylight_color[2] > 0.0f)
+	{
+		const float l = RT_Luminance (skycolor) / q_max (RT_Luminance (skylight_color), 0.001f);
+		VectorScale (skylight_color, l, fog_ambient);
+	}
+	else
+		VectorCopy (has_skybox ? skycolor : skyflatcolor, fog_ambient);
 
 	vec3_t volume_light_angles;
 	vec3_t volume_light_color;
@@ -1283,14 +1322,14 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 	else
 	{
 		RT_VEC3_SET (volume_light_angles, CVAR_TO_FLOAT (rt_volume_lpitch), CVAR_TO_FLOAT (rt_volume_lyaw), 0);
-		VectorCopy (skyflatcolor, volume_light_color);
+		VectorCopy (fog_ambient, volume_light_color);
 	}
 
 	RgDrawFrameVolumetricParams volumetric_params = {
 		.enable = CVAR_TO_UINT32 (rt_volume_type) != 0,
 		.useSimpleDepthBased = CVAR_TO_UINT32 (rt_volume_type) == 1 || CVAR_TO_BOOL (rt_classic_render),
 		.volumetricFar = CVAR_TO_FLOAT (rt_volume_far),
-		.ambientColor = RT_VEC3_MULT (skyflatcolor, CVAR_TO_FLOAT(rt_volume_ambient)),
+		.ambientColor = RT_VEC3_MULT (fog_ambient, CVAR_TO_FLOAT(rt_volume_ambient)),
 		.scaterring = CVAR_TO_FLOAT (rt_volume_scatter),
 		.sourceColor = RT_VEC3_MULT (volume_light_color, CVAR_TO_FLOAT (rt_volume_lintensity)),
 		.sourceDirection = RT_AnglesToDir (volume_light_angles),

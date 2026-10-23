@@ -652,6 +652,15 @@ static struct
 	vec3_t color;
 } map_sun;
 
+// the color of the light from the sky that modern maps define in worldspawn (ericw-tools'
+// "_sunlight2_color", the sky dome's light): the ray traced sky light takes it, instead of
+// the skybox picture's own color, which can be much more saturated (a sunset's orange)
+static struct
+{
+	qboolean valid;
+	vec3_t   color;
+} map_skylight;
+
 // a map made with modern light tools (ericw-tools keys in worldspawn): it relies on all of
 // its light entities, rather than the hand-picked lights of the original game's maps
 static qboolean map_modern;
@@ -689,11 +698,21 @@ rt_elight_t *rt_elights = NULL;
 int          rt_elights_count = 0;
 int          rt_elights_allocated = 0;
 
+// the color of the sky's light the map asks for, if it does (brightest component 1)
+qboolean RT_GetMapSkyLightColor (vec3_t color)
+{
+	if (!map_skylight.valid)
+		return false;
+	VectorCopy (map_skylight.color, color);
+	return true;
+}
+
 // Parse worldmodel->entities, to find static lights
 void RT_ParseElights ()
 {
 	rt_elights_count = 0;
 	memset (&map_sun, 0, sizeof (map_sun));
+	memset (&map_skylight, 0, sizeof (map_skylight));
 	RT_VEC3_ASSIGN (map_sun.angles, 90, 0, 0); // straight down, if there's no "_sun_mangle"
 	RT_VEC3_ASSIGN (map_sun.color, 1, 1, 1);
 	int entity_index = -1;
@@ -794,6 +813,8 @@ void RT_ParseElights ()
 			}
 			else if (strcmp (key, "sunlight_color") == 0)
 				ParseLightColor (value, map_sun.color);
+			else if (strcmp (key, "sunlight2_color") == 0)
+				map_skylight.valid = ParseLightColor (value, map_skylight.color);
 			continue;
 		}
 
