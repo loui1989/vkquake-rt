@@ -280,6 +280,9 @@ void Modlist_Init (void)
 #if RT_RENDERER
 		// ignore overriden folder
 		assert (!strcmp ("ovrd/", RT_OVERRIDEN_FOLDER));
+		// not game directories: the re-release's files, loose localization, hidden folders
+		if (dir_t->d_name[0] == '.' || !q_strcasecmp (dir_t->d_name, "rerelease") || !q_strcasecmp (dir_t->d_name, "localization"))
+			continue;
 		if (!strcmp (dir_t->d_name, "ovrd"))
 			continue;
 #endif

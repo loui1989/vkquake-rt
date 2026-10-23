@@ -1819,6 +1819,27 @@ void M_Menu_Mods_f (void)
 	mods_cursor = 0;
 }
 
+// titles of the well-known mods, shown in place of their folder names
+static const char *M_ModTitle (const char *dir)
+{
+	static const char *const known[][2] = {
+		{"id1", "Quake"},
+		{"hipnotic", "Scourge of Armagon"},
+		{"rogue", "Dissolution of Eternity"},
+		{"dopa", "Dimension of the Past"},
+		{"mg1", "Dimension of the Machine"},
+		{"mg3", "Dawn of the Machine"},
+		{"q64", "Quake (Nintendo 64)"},
+		{"ctf", "Capture The Flag"},
+		{"quoth", "Quoth"},
+		{"udob", "Underdark Overbright"},
+	};
+	for (int i = 0; i < (int)countof (known); i++)
+		if (!q_strcasecmp (dir, known[i][0]))
+			return known[i][1];
+	return dir;
+}
+
 void M_Mods_Draw (cb_context_t *cbx)
 {
 	M_DrawTransPic (cbx, 16, 4, Draw_CachePic ("gfx/qplaque.lmp"));
@@ -1835,13 +1856,13 @@ void M_Mods_Draw (cb_context_t *cbx)
 		if (mod_index >= MAX_MODS_ON_SCREEN)
 			break;
 		if (mod_index >= 0)
-			M_Print (cbx, 105, 32 + mod_index * 8, item->name);
+			M_Print (cbx, 64, 32 + mod_index * 8, M_ModTitle (item->name));
 		++mod_index;
 	}
 
-	M_DrawCharacter (cbx, 90, 32 + (mods_cursor - first_mod) * 8, 12 + ((int)(realtime * 4) & 1));
+	M_DrawCharacter (cbx, 48, 32 + (mods_cursor - first_mod) * 8, 12 + ((int)(realtime * 4) & 1));
 	if (num_mods > MAX_MODS_ON_SCREEN)
-		M_DrawScrollbar (cbx, 220, 32 + 8, (float)(first_mod) / (float)(num_mods - MAX_MODS_ON_SCREEN), MAX_MODS_ON_SCREEN - 2);
+		M_DrawScrollbar (cbx, 280, 32 + 8, (float)(first_mod) / (float)(num_mods - MAX_MODS_ON_SCREEN), MAX_MODS_ON_SCREEN - 2);
 }
 
 void M_Mods_Key (int key)
