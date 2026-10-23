@@ -1034,6 +1034,13 @@ static void RT_FlushBatch (cb_context_t *cbx, const rt_uploadsurf_state_t *s, ui
 				    info.pPortalIndex = &portalindex;
 				}
 			}
+			else
+			{
+				// teleporter texture with no teleporter to look through (decoration, as in
+				// Dimension of the Machine's start map): draw it as a plain surface
+				info.passThroughType = RG_GEOMETRY_PASS_THROUGH_TYPE_OPAQUE;
+				info.flags &= ~RG_GEOMETRY_UPLOAD_REFL_REFR_ALBEDO_ADD_BIT;
+			}
 		}
 
 		RgResult r = rgUploadGeometry (vulkan_globals.instance, &info);
@@ -1468,10 +1475,11 @@ void RT_CustomLights_Parse (void)
 	fclose (f);
 
 
-	// make list for current map
+	// make list for current map: the list is for the original game's maps, not a mod's maps
+	// that happen to have the same name (e.g. Dawn of the Machine's start.bsp)
 	const char *cur_mapname = cl.worldmodel->name;
 
-	for (int i = 0; i < rt_customlights_all_count; i++)
+	for (int i = 0; i < rt_customlights_all_count && cl.worldmodel->path_id == 1; i++)
 	{
 		const rt_worldcustomlight_t *src = &rt_customlights_all[i];
 

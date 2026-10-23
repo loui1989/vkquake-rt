@@ -430,6 +430,27 @@ static void RT_UploadAllDlights ()
 		RgResult r = rgUploadDirectionalLight (vulkan_globals.instance, &info);
 		RG_CHECK (r);
 	}
+	else
+	{
+		// the map's own sun (modern maps: "_sunlight" in worldspawn)
+		vec3_t angles, color;
+		if (RT_GetMapSun (angles, color))
+		{
+			vec3_t forward, right, up;
+			AngleVectors (angles, forward, right, up);
+			RT_FIXUP_LIGHT_INTENSITY (color, false);
+
+			RgDirectionalLightUploadInfo info = {
+				.uniqueID = (uint64_t)UINT32_MAX + 1,
+				.color = {color[0], color[1], color[2]},
+				.direction = {forward[0], forward[1], forward[2]},
+				.angularDiameterDegrees = 0.5f,
+			};
+
+			RgResult r = rgUploadDirectionalLight (vulkan_globals.instance, &info);
+			RG_CHECK (r);
+		}
+	}
 }
 
 /*

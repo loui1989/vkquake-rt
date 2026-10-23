@@ -640,7 +640,50 @@ typedef struct rt_elight_s
 	float    intensity;
 	int      lightstyle;
 	qboolean is_around_poi;
+	vec3_t   color; // "_color", if STRUCT_STATE_FOUND_COLOR
 } rt_elight_t;
+
+// the sun that modern maps define in worldspawn (ericw-tools' "_sunlight", "_sun_mangle",
+// "_sunlight_color"): used when rt_sun doesn't set one
+static struct
+{
+	float  intensity; // 0 - none
+	vec3_t angles;    // pitch yaw, Quake's convention (positive pitch is down)
+	vec3_t color;
+} map_sun;
+
+// a map made with modern light tools (ericw-tools keys in worldspawn): it relies on all of
+// its light entities, rather than the hand-picked lights of the original game's maps
+static qboolean map_modern;
+
+#define RT_VEC3_ASSIGN(v, x, y, z) ((v)[0] = (x), (v)[1] = (y), (v)[2] = (z))
+
+// a "_color" value: "1 0.5 0.2" or "255 128 50", brightest component scaled to 1
+static qboolean ParseLightColor (const char *value, vec3_t out)
+{
+	vec3_t c;
+	if (sscanf (value, "%f %f %f", &c[0], &c[1], &c[2]) != 3)
+		return false;
+	if (c[0] > 1.0f || c[1] > 1.0f || c[2] > 1.0f)
+		VectorScale (c, 1.0f / 255.0f, c);
+	const float m = q_max (c[0], q_max (c[1], c[2]));
+	if (m <= 0.0f)
+		return false;
+	VectorScale (c, 1.0f / m, out);
+	return true;
+}
+
+// the map's own sun, if it has one and it's not overridden by rt_sun; color includes the intensity
+qboolean RT_GetMapSun (vec3_t angles, vec3_t color)
+{
+	extern cvar_t rt_sun, rt_mapsun;
+	if (CVAR_TO_FLOAT (rt_sun) > 0.001f || map_sun.intensity <= 0.0f || CVAR_TO_FLOAT (rt_mapsun) <= 0.0f)
+		return false;
+	VectorCopy (map_sun.angles, angles);
+	// "_sunlight" 360 is a bright sun in the light compiler's units: about as strong as rt_sun 6
+	VectorScale (map_sun.color, map_sun.intensity / 60.0f * CVAR_TO_FLOAT (rt_mapsun), color);
+	return true;
+}
 
 rt_elight_t *rt_elights = NULL;
 int          rt_elights_count = 0;
@@ -650,6 +693,11 @@ int          rt_elights_allocated = 0;
 void RT_ParseElights ()
 {
 	rt_elights_count = 0;
+	memset (&map_sun, 0, sizeof (map_sun));
+	RT_VEC3_ASSIGN (map_sun.angles, 90, 0, 0); // straight down, if there's no "_sun_mangle"
+	RT_VEC3_ASSIGN (map_sun.color, 1, 1, 1);
+	int entity_index = -1;
+	map_modern = false;
 
 	RT_ParsePointsOfInterest ();
 
@@ -676,6 +724,7 @@ void RT_ParseElights ()
     #define STRUCT_STATE_FOUND_WITH_MODEL     16
     #define STRUCT_STATE_FOUND_LIGHTSTYLE     32
     #define STRUCT_STATE_FOUND_APPLY_OFFSET   64
+    #define STRUCT_STATE_FOUND_COLOR          128
 	
 	while (1)
 	{
@@ -687,6 +736,7 @@ void RT_ParseElights ()
 	    {
 			memset (&struct_values, 0, sizeof (struct_values));
 			struct_values.state = STRUCT_STATE_STRUCT_STARTED;
+			entity_index++;
             continue;
 	    }
 	    else if (com_token[0] == '}')
@@ -723,7 +773,36 @@ void RT_ParseElights ()
 		q_strlcpy (value, com_token, sizeof (value));
 
 		
-		if (strcmp (key, "classname") == 0)
+		if (entity_index == 0)
+		{
+			// worldspawn: the sun
+			static const char *const modern_keys[] = {"sunlight", "sunlight2", "sunlight3", "bounce", "dirt", "dirtmode",
+			                                          "anglescale", "anglesense", "sun_mangle", "sunlight_color", "minlight_color",
+			                                          "spotlightautofalloff", "lightmap_scale", "phong"};
+			for (int k = 0; k < (int)countof (modern_keys); k++)
+				if (strcmp (key, modern_keys[k]) == 0)
+					map_modern = true;
+
+			if (strcmp (key, "sunlight") == 0)
+				map_sun.intensity = q_max (0.0f, strtof (value, NULL));
+			else if (strcmp (key, "sun_mangle") == 0 || strcmp (key, "sunlight_mangle") == 0)
+			{
+				// yaw, pitch (-90 shines straight down), roll
+				float yaw = 0, pitch = -90;
+				if (sscanf (value, "%f %f", &yaw, &pitch) >= 2)
+					RT_VEC3_ASSIGN (map_sun.angles, -pitch, yaw, 0);
+			}
+			else if (strcmp (key, "sunlight_color") == 0)
+				ParseLightColor (value, map_sun.color);
+			continue;
+		}
+
+		if (strcmp (key, "color") == 0)
+		{
+			if (ParseLightColor (value, struct_values.color))
+				struct_values.state |= STRUCT_STATE_FOUND_COLOR;
+		}
+		else if (strcmp (key, "classname") == 0)
 		{
 			if (IsClassname_Light (value))
 			{
@@ -820,6 +899,12 @@ void RT_UploadAllElights ()
 			accept = true;
 		}
 
+		// a modern map is lit by all of its lights
+		if (map_modern && quake_intensity > 0)
+		{
+			accept = true;
+		}
+
 		if (accept)
 		{
 			float intens = quake_intensity / CVAR_TO_FLOAT (rt_elight_normaliz);
@@ -832,6 +917,13 @@ void RT_UploadAllElights ()
 
 			vec3_t color;
 			RT_INIT_DEFAULT_LIGHT_COLOR (color);
+			if (src->state & STRUCT_STATE_FOUND_COLOR)
+			{
+				// the map's own color, as bright as the default one
+				const float lum = q_max (0.001f, 0.2126f * src->color[0] + 0.7152f * src->color[1] + 0.0722f * src->color[2]);
+				const float deflum = 0.2126f * color[0] + 0.7152f * color[1] + 0.0722f * color[2];
+				VectorScale ((float *)src->color, deflum / lum, color);
+			}
 			VectorScale (color, intens, color);
 			RT_FIXUP_LIGHT_INTENSITY (color, true);
 

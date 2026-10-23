@@ -150,6 +150,7 @@ task_handle_t prev_end_rendering_task = INVALID_TASK_HANDLE;
 	CVAR_DEF_T (rt_sun, "0") \
 	CVAR_DEF_T (rt_sun_pitch, "60") \
 	CVAR_DEF_T (rt_sun_yaw, "-40") \
+	CVAR_DEF_T (rt_mapsun, "1") \
 	CVAR_DEF_T (rt_flashlight, "0") \
 	\
 	CVAR_DEF_T (rt_muzzleoffs_x, "0") \
@@ -1272,6 +1273,12 @@ static void GL_EndRenderingTask (end_rendering_parms_t *parms)
 	{
 		RT_VEC3_SET (volume_light_angles, CVAR_TO_FLOAT (rt_sun_pitch), CVAR_TO_FLOAT (rt_sun_yaw), 0);
 		RT_INIT_DEFAULT_LIGHT_COLOR (volume_light_color);
+	}
+	else if (RT_GetMapSun (volume_light_angles, volume_light_color))
+	{
+		// light shafts from the map's own sun, in its color
+		const float m = q_max (volume_light_color[0], q_max (volume_light_color[1], volume_light_color[2]));
+		VectorScale (volume_light_color, 1.0f / q_max (m, 0.001f), volume_light_color);
 	}
 	else
 	{
